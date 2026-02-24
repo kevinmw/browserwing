@@ -159,7 +159,7 @@ func NewManager(cfg *config.Config, db *storage.BoltDB, llmManager *llm.Manager)
 	if llmManager != nil {
 		recorder.SetLLMManager(llmManager)
 	}
-	
+
 	// 设置数据库接口
 	if db != nil {
 		recorder.SetDB(db)
@@ -577,7 +577,9 @@ func (m *Manager) IsRunning() bool {
 		return m.isRunning // 向后兼容：如果没有实例ID，使用旧逻辑
 	}
 
-	return m.IsInstanceRunning(m.currentInstanceID)
+	// 直接检查实例，避免调用 IsInstanceRunning 导致死锁
+	runtime, exists := m.instances[m.currentInstanceID]
+	return exists && runtime != nil && runtime.browser != nil
 }
 
 func (m *Manager) IsInstanceRunning(instanceID string) bool {
@@ -716,9 +718,6 @@ func (m *Manager) setPageWindow(page *rod.Page) {
 // OpenPage 打开一个新页面
 // instanceID: 指定实例ID，空字符串表示使用当前实例
 func (m *Manager) OpenPage(url string, language string, instanceID string, norecord ...bool) (err error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
 	// 捕获 panic 并转换为错误
 	defer func() {
 		if r := recover(); r != nil {
@@ -733,9 +732,11 @@ func (m *Manager) OpenPage(url string, language string, instanceID string, norec
 		noRecord = norecord[0]
 	}
 
-	// 获取指定实例的浏览器
+	// 获取指定实例的浏览器（需要锁保护）
+	m.mu.Lock()
 	browser, _, instance, err := m.getInstanceBrowser(instanceID)
 	if err != nil {
+		m.mu.Unlock()
 		return err
 	}
 
@@ -747,13 +748,6 @@ func (m *Manager) OpenPage(url string, language string, instanceID string, norec
 		instanceID = m.currentInstanceID
 	}
 
-	// 检查浏览器连接是否仍然有效
-	ctx := context.Background()
-	if err := checkBrowserConnection(browser); err != nil {
-		logger.Error(ctx, "Browser connection check failed: %v", err)
-		return fmt.Errorf("browser connection is closed or invalid: %w", err)
-	}
-
 	// 保存当前语言设置,用于后续注入脚本时的文本替换
 	if language == "" {
 		language = "zh-CN" // 默认简体中文
@@ -762,6 +756,15 @@ func (m *Manager) OpenPage(url string, language string, instanceID string, norec
 
 	// 根据URL匹配配置
 	config := m.getConfigForURL(url)
+	m.mu.Unlock() // 释放锁，准备执行耗时操作
+
+	// 检查浏览器连接是否仍然有效
+	ctx := context.Background()
+	if err := checkBrowserConnection(browser); err != nil {
+		logger.Error(ctx, "Browser connection check failed: %v", err)
+		return fmt.Errorf("browser connection is closed or invalid: %w", err)
+	}
+
 	logger.Info(ctx, fmt.Sprintf("URL: %s, using configuration: %s, language: %s", url, config.Name, language))
 
 	var page *rod.Page
@@ -791,7 +794,7 @@ func (m *Manager) OpenPage(url string, language string, instanceID string, norec
 		UserAgent: userAgent,
 	})
 
-	// 导航到目标 URL（设置60秒超时）
+	// 导航到目标 URL（设置60秒超时）- 这是耗时操作，不持有锁
 	if err := page.Timeout(60 * time.Second).Navigate(url); err != nil {
 		return fmt.Errorf("failed to navigate to page: %w", err)
 	}
@@ -820,13 +823,19 @@ func (m *Manager) OpenPage(url string, language string, instanceID string, norec
 	if !noRecord {
 		// 注入浮动录制按钮
 		time.Sleep(500 * time.Millisecond) // 等待页面稳定
+
+		// 获取当前语言（需要锁保护）
+		m.mu.Lock()
+		currentLang := m.currentLanguage
+		m.mu.Unlock()
+
 		// 替换浮动按钮脚本中的多语言占位符
-		localizedFloatButtonScript := ReplaceI18nPlaceholders(floatButtonScript, m.currentLanguage, FloatButtonI18n)
+		localizedFloatButtonScript := ReplaceI18nPlaceholders(floatButtonScript, currentLang, FloatButtonI18n)
 		_, err := page.Eval(`() => { ` + localizedFloatButtonScript + ` return true; }`)
 		if err != nil {
 			logger.Warn(ctx, "Failed to inject float button script: %v", err)
 		} else {
-			logger.Info(ctx, "✓ Float recording button injected successfully (language: %s)", m.currentLanguage)
+			logger.Info(ctx, "✓ Float recording button injected successfully (language: %s)", currentLang)
 
 			// 设置 API 端口信息
 			if m.config.Server != nil && m.config.Server.Port != "" {
@@ -841,10 +850,12 @@ func (m *Manager) OpenPage(url string, language string, instanceID string, norec
 		go m.checkInPageRecordingRequests(ctx, page)
 	}
 
-	// 保存当前活动页面到指定实例
+	// 保存当前活动页面到指定实例（需要锁保护）
+	m.mu.Lock()
 	if err := m.setInstanceActivePage(instanceID, page); err != nil {
 		logger.Warn(ctx, "Failed to set active page: %v", err)
 	}
+	m.mu.Unlock()
 
 	logger.Info(ctx, fmt.Sprintf("Page opened: %s", url))
 	return nil
@@ -1127,8 +1138,8 @@ func (m *Manager) PlayScript(ctx context.Context, script *models.Script, instanc
 		currentLang = "zh-CN" // 默认简体中文
 	}
 	player := NewPlayer(currentLang)
-	player.agentManager = m.agentManager     // 设置 Agent 管理器用于 AI 控制功能
-	player.browserManager = m                // 设置 Browser 管理器用于同步活跃页面
+	player.agentManager = m.agentManager // 设置 Agent 管理器用于 AI 控制功能
+	player.browserManager = m            // 设置 Browser 管理器用于同步活跃页面
 
 	// 设置下载路径并启动下载监听
 	if m.downloadPath != "" {
@@ -1294,8 +1305,11 @@ func (m *Manager) checkInPageRecordingRequests(ctx context.Context, page *rod.Pa
 					// 获取当前页面URL
 					info, err := page.Info()
 					if err == nil {
-						// 获取当前语言设置
+						// 获取当前语言设置（需要锁保护）
+						m.mu.Lock()
 						currentLang := m.currentLanguage
+						m.mu.Unlock()
+
 						if currentLang == "" {
 							currentLang = "zh-CN"
 						}
@@ -1659,6 +1673,35 @@ func (m *Manager) startInstanceInternal(ctx context.Context, instanceID string) 
 	}
 
 	logger.Info(ctx, "Starting browser instance: %s (%s)", instance.Name, instance.Type)
+
+	// 加载默认配置和站点配置（如果还未加载）
+	if m.defaultBrowserConfig == nil {
+		defaultConfig, err := m.db.GetDefaultBrowserConfig()
+		if err != nil {
+			logger.Warn(ctx, "Default browser configuration not found, using system defaults")
+			defaultConfig = m.getDefaultBrowserConfig()
+		}
+		m.defaultBrowserConfig = defaultConfig
+		logger.Info(ctx, "Loaded default browser configuration: %s", defaultConfig.Name)
+	}
+
+	if m.siteConfigs == nil {
+		// 加载所有网站特定配置
+		allConfigs, err := m.db.ListBrowserConfigs()
+		if err != nil {
+			logger.Warn(ctx, "Failed to load site configurations: %v", err)
+			m.siteConfigs = []*models.BrowserConfig{}
+		} else {
+			// 过滤出有URL模式的配置
+			m.siteConfigs = []*models.BrowserConfig{}
+			for i := range allConfigs {
+				if allConfigs[i].URLPattern != "" && !allConfigs[i].IsDefault {
+					m.siteConfigs = append(m.siteConfigs, &allConfigs[i])
+				}
+			}
+			logger.Info(ctx, "Loaded %d site-specific configurations", len(m.siteConfigs))
+		}
+	}
 
 	var browser *rod.Browser
 	var launcherObj *launcher.Launcher
