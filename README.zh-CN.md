@@ -261,7 +261,7 @@ BrowserWing 提供 26+ 个 RESTful 端点用于编程式浏览器控制：
 
 扫码加入微信群：
 
-<img width="150" alt="BrowserWing 微信群" src="https://raw.githubusercontent.com/browserwing/browserwing/main/docs/assets/wechat_group.jpg">
+<img width="150" alt="BrowserWing 微信群" src="https://quick.go-admin.cn/ai/article/browserwing_wechat_group.jpg">
 
 ## 致谢
 
