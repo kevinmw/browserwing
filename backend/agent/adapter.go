@@ -11,8 +11,8 @@ import (
 // SendMessageInterface 是为了适配外部接口而添加的方法
 // 接收 chan<- any 并转换为内部使用的 chan<- StreamChunk
 func (am *AgentManager) SendMessageInterface(ctx context.Context, sessionID, userMessage string, streamChan chan<- any, llmConfigID string) error {
-	// 如果是AI控制临时会话（以ai_control_开头），先创建临时会话
-	if strings.HasPrefix(sessionID, "ai_control_") {
+	// 如果是AI控制或AI探索临时会话，先创建临时会话
+	if strings.HasPrefix(sessionID, "ai_control_") || strings.HasPrefix(sessionID, "ai_explore_") {
 		// 检查会话是否已存在
 		if _, err := am.GetSession(sessionID); err != nil {
 			// 会话不存在，创建临时会话

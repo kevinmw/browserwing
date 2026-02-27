@@ -187,6 +187,7 @@ export const translations = {
     'nav.agent': 'AI Agent',
     'nav.llm': '大模型',
     'nav.prompts': '提示词',
+    'nav.aiExplorer': 'AI 探索',
 
     // 布局
     'layout.appName': 'BrowserWing',
@@ -1204,7 +1205,38 @@ export const translations = {
     'dashboard.highlights.security.title': '本地运行',
     'dashboard.highlights.security.desc': '所有数据在本地处理，保护隐私安全',
     'dashboard.highlights.ai.title': 'AI 增强',
-    'dashboard.highlights.ai.desc': '结合大模型能力，实现智能化浏览器操作'
+    'dashboard.highlights.ai.desc': '结合大模型能力，实现智能化浏览器操作',
+
+    // AI 探索
+    'aiExplorer.title': 'AI 自主探索',
+    'aiExplorer.subtitle': '描述一个任务，AI 将自主操作浏览器完成任务并生成可回放的脚本',
+    'aiExplorer.taskDesc': '任务描述',
+    'aiExplorer.taskDescPlaceholder': '描述你希望 AI 在浏览器中完成的任务，例如：打开百度搜索"天气预报"并截取第一条结果',
+    'aiExplorer.startURL': '起始 URL',
+    'aiExplorer.llmSelect': '选择大模型',
+    'aiExplorer.llmDefault': '使用默认模型',
+    'aiExplorer.startExplore': '开始探索',
+    'aiExplorer.exploring': 'AI 正在探索中...',
+    'aiExplorer.stopExplore': '停止探索',
+    'aiExplorer.done': '探索完成',
+    'aiExplorer.result': '探索结果',
+    'aiExplorer.newExplore': '新建探索',
+    'aiExplorer.eventLog': '事件日志',
+    'aiExplorer.scriptName': '脚本名称',
+    'aiExplorer.actions': '操作步骤',
+    'aiExplorer.noActions': '没有操作步骤',
+    'aiExplorer.saveScript': '保存脚本',
+    'aiExplorer.saveSuccess': '脚本保存成功',
+    'aiExplorer.noScript': '未生成脚本，可能是探索被中断或未完成',
+    'aiExplorer.taskRequired': '请输入任务描述',
+    'aiExplorer.action.navigate': '导航',
+    'aiExplorer.action.click': '点击',
+    'aiExplorer.action.input': '输入',
+    'aiExplorer.action.select': '选择',
+    'aiExplorer.action.keyboard': '按键',
+    'aiExplorer.action.scroll': '滚动',
+    'aiExplorer.action.sleep': '等待',
+    'aiExplorer.action.executeJs': '执行JS'
   },
 
   'zh-TW': {
@@ -1366,6 +1398,7 @@ export const translations = {
     'nav.agent': 'AI Agent',
     'nav.llm': '大模型',
     'nav.prompts': '提示詞',
+    'nav.aiExplorer': 'AI 探索',
 
     // 布局
     'layout.appName': 'BrowserWing',
@@ -2424,7 +2457,38 @@ export const translations = {
     "dashboard.advanced.scripts.desc": "匯入／匯出腳本，轉換為 Skills 檔案供 AI 使用",
     "dashboard.advanced.config.title": "LLM 設定",
     "dashboard.advanced.config.desc": "設定 LLM 模型以進行智慧資料擷取",
-    "dashboard.advanced.learnMore": "了解更多"
+    "dashboard.advanced.learnMore": "了解更多",
+
+    // AI 探索
+    'aiExplorer.title': 'AI 自主探索',
+    'aiExplorer.subtitle': '描述一個任務，AI 將自主操作瀏覽器完成任務並生成可回放的腳本',
+    'aiExplorer.taskDesc': '任務描述',
+    'aiExplorer.taskDescPlaceholder': '描述你希望 AI 在瀏覽器中完成的任務，例如：打開百度搜尋「天氣預報」並截取第一條結果',
+    'aiExplorer.startURL': '起始 URL',
+    'aiExplorer.llmSelect': '選擇大模型',
+    'aiExplorer.llmDefault': '使用預設模型',
+    'aiExplorer.startExplore': '開始探索',
+    'aiExplorer.exploring': 'AI 正在探索中...',
+    'aiExplorer.stopExplore': '停止探索',
+    'aiExplorer.done': '探索完成',
+    'aiExplorer.result': '探索結果',
+    'aiExplorer.newExplore': '新建探索',
+    'aiExplorer.eventLog': '事件日誌',
+    'aiExplorer.scriptName': '腳本名稱',
+    'aiExplorer.actions': '操作步驟',
+    'aiExplorer.noActions': '沒有操作步驟',
+    'aiExplorer.saveScript': '儲存腳本',
+    'aiExplorer.saveSuccess': '腳本儲存成功',
+    'aiExplorer.noScript': '未生成腳本，可能是探索被中斷或未完成',
+    'aiExplorer.taskRequired': '請輸入任務描述',
+    'aiExplorer.action.navigate': '導航',
+    'aiExplorer.action.click': '點擊',
+    'aiExplorer.action.input': '輸入',
+    'aiExplorer.action.select': '選擇',
+    'aiExplorer.action.keyboard': '按鍵',
+    'aiExplorer.action.scroll': '捲動',
+    'aiExplorer.action.sleep': '等待',
+    'aiExplorer.action.executeJs': '執行JS'
   },
 
   'en': {
@@ -2601,6 +2665,7 @@ export const translations = {
     'nav.agent': 'AI Agent',
     'nav.llm': 'LLM',
     'nav.prompts': 'Prompts',
+    'nav.aiExplorer': 'AI Explorer',
 
     // Layout
     'layout.appName': 'BrowserWing',
@@ -3634,7 +3699,38 @@ export const translations = {
     "dashboard.advanced.scripts.desc": "Import and export scripts, and convert them into Skills files for AI usage",
     "dashboard.advanced.config.title": "LLM Configuration",
     "dashboard.advanced.config.desc": "Configure LLM models for intelligent data extraction",
-    "dashboard.advanced.learnMore": "Learn More"
+    "dashboard.advanced.learnMore": "Learn More",
+
+    // AI Explorer
+    'aiExplorer.title': 'AI Explorer',
+    'aiExplorer.subtitle': 'Describe a task and AI will autonomously operate the browser to complete it and generate a replayable script',
+    'aiExplorer.taskDesc': 'Task Description',
+    'aiExplorer.taskDescPlaceholder': 'Describe the task you want AI to complete in the browser, e.g.: Open Google, search for "weather forecast" and capture the first result',
+    'aiExplorer.startURL': 'Start URL',
+    'aiExplorer.llmSelect': 'Select LLM',
+    'aiExplorer.llmDefault': 'Use default model',
+    'aiExplorer.startExplore': 'Start Exploring',
+    'aiExplorer.exploring': 'AI is exploring...',
+    'aiExplorer.stopExplore': 'Stop Exploring',
+    'aiExplorer.done': 'Exploration completed',
+    'aiExplorer.result': 'Exploration Result',
+    'aiExplorer.newExplore': 'New Exploration',
+    'aiExplorer.eventLog': 'Event Log',
+    'aiExplorer.scriptName': 'Script Name',
+    'aiExplorer.actions': 'Actions',
+    'aiExplorer.noActions': 'No actions',
+    'aiExplorer.saveScript': 'Save Script',
+    'aiExplorer.saveSuccess': 'Script saved successfully',
+    'aiExplorer.noScript': 'No script generated. The exploration may have been interrupted or incomplete.',
+    'aiExplorer.taskRequired': 'Please enter a task description',
+    'aiExplorer.action.navigate': 'Navigate',
+    'aiExplorer.action.click': 'Click',
+    'aiExplorer.action.input': 'Input',
+    'aiExplorer.action.select': 'Select',
+    'aiExplorer.action.keyboard': 'Key Press',
+    'aiExplorer.action.scroll': 'Scroll',
+    'aiExplorer.action.sleep': 'Wait',
+    'aiExplorer.action.executeJs': 'Execute JS'
   },
 
   'es': {
@@ -3799,6 +3895,7 @@ export const translations = {
     'nav.agent': 'Agente AI',
     'nav.llm': 'LLM',
     'nav.prompts': 'Prompts',
+    'nav.aiExplorer': 'Explorador AI',
 
     // Diseño
     'layout.appName': 'BrowserWing',
@@ -4853,7 +4950,38 @@ export const translations = {
     "dashboard.advanced.scripts.desc": "Importa y exporta scripts, y conviértelos en archivos de Skills para que la IA los utilice",
     "dashboard.advanced.config.title": "Configuración de LLM",
     "dashboard.advanced.config.desc": "Configura modelos LLM para la extracción inteligente de datos",
-    "dashboard.advanced.learnMore": "Más información"
+    "dashboard.advanced.learnMore": "Más información",
+
+    // Explorador AI
+    'aiExplorer.title': 'Exploración Autónoma con AI',
+    'aiExplorer.subtitle': 'Describe una tarea y la AI operará autónomamente el navegador para completarla y generar un script reproducible',
+    'aiExplorer.taskDesc': 'Descripción de la tarea',
+    'aiExplorer.taskDescPlaceholder': 'Describe la tarea que deseas que la AI complete en el navegador, por ejemplo: Abrir Google, buscar "pronóstico del tiempo" y capturar el primer resultado',
+    'aiExplorer.startURL': 'URL de inicio',
+    'aiExplorer.llmSelect': 'Seleccionar LLM',
+    'aiExplorer.llmDefault': 'Usar modelo predeterminado',
+    'aiExplorer.startExplore': 'Iniciar exploración',
+    'aiExplorer.exploring': 'La AI está explorando...',
+    'aiExplorer.stopExplore': 'Detener exploración',
+    'aiExplorer.done': 'Exploración completada',
+    'aiExplorer.result': 'Resultado de la exploración',
+    'aiExplorer.newExplore': 'Nueva exploración',
+    'aiExplorer.eventLog': 'Registro de eventos',
+    'aiExplorer.scriptName': 'Nombre del script',
+    'aiExplorer.actions': 'Acciones',
+    'aiExplorer.noActions': 'Sin acciones',
+    'aiExplorer.saveScript': 'Guardar script',
+    'aiExplorer.saveSuccess': 'Script guardado correctamente',
+    'aiExplorer.noScript': 'No se generó un script. La exploración puede haber sido interrumpida o incompleta.',
+    'aiExplorer.taskRequired': 'Por favor ingrese una descripción de la tarea',
+    'aiExplorer.action.navigate': 'Navegar',
+    'aiExplorer.action.click': 'Clic',
+    'aiExplorer.action.input': 'Entrada',
+    'aiExplorer.action.select': 'Seleccionar',
+    'aiExplorer.action.keyboard': 'Tecla',
+    'aiExplorer.action.scroll': 'Desplazar',
+    'aiExplorer.action.sleep': 'Esperar',
+    'aiExplorer.action.executeJs': 'Ejecutar JS'
   },
 
   'ja': {
@@ -5033,6 +5161,7 @@ export const translations = {
     'nav.agent': 'AIエージェント',
     'nav.llm': 'LLM',
     'nav.prompts': 'プロンプト',
+    'nav.aiExplorer': 'AI エクスプローラー',
 
     // レイアウト
     'layout.appName': 'BrowserWing',
@@ -6071,6 +6200,37 @@ export const translations = {
     "dashboard.advanced.scripts.desc": "スクリプトのインポート／エクスポートや、AI 用の Skills ファイルへの変換が可能です",
     "dashboard.advanced.config.title": "LLM 設定",
     "dashboard.advanced.config.desc": "インテリジェントなデータ抽出のために LLM モデルを設定します",
-    "dashboard.advanced.learnMore": "詳しく見る"
+    "dashboard.advanced.learnMore": "詳しく見る",
+
+    // AI エクスプローラー
+    'aiExplorer.title': 'AI 自律探索',
+    'aiExplorer.subtitle': 'タスクを記述すると、AIが自律的にブラウザを操作してタスクを完了し、再生可能なスクリプトを生成します',
+    'aiExplorer.taskDesc': 'タスクの説明',
+    'aiExplorer.taskDescPlaceholder': 'AIにブラウザで完了してほしいタスクを記述してください。例：Googleを開いて「天気予報」を検索し、最初の結果をキャプチャする',
+    'aiExplorer.startURL': '開始URL',
+    'aiExplorer.llmSelect': 'LLMを選択',
+    'aiExplorer.llmDefault': 'デフォルトモデルを使用',
+    'aiExplorer.startExplore': '探索開始',
+    'aiExplorer.exploring': 'AIが探索中...',
+    'aiExplorer.stopExplore': '探索停止',
+    'aiExplorer.done': '探索完了',
+    'aiExplorer.result': '探索結果',
+    'aiExplorer.newExplore': '新規探索',
+    'aiExplorer.eventLog': 'イベントログ',
+    'aiExplorer.scriptName': 'スクリプト名',
+    'aiExplorer.actions': '操作ステップ',
+    'aiExplorer.noActions': '操作ステップがありません',
+    'aiExplorer.saveScript': 'スクリプトを保存',
+    'aiExplorer.saveSuccess': 'スクリプトの保存に成功しました',
+    'aiExplorer.noScript': 'スクリプトが生成されませんでした。探索が中断されたか、完了しなかった可能性があります。',
+    'aiExplorer.taskRequired': 'タスクの説明を入力してください',
+    'aiExplorer.action.navigate': 'ナビゲート',
+    'aiExplorer.action.click': 'クリック',
+    'aiExplorer.action.input': '入力',
+    'aiExplorer.action.select': '選択',
+    'aiExplorer.action.keyboard': 'キー押下',
+    'aiExplorer.action.scroll': 'スクロール',
+    'aiExplorer.action.sleep': '待機',
+    'aiExplorer.action.executeJs': 'JS実行'
   },
 } as const

@@ -1,6 +1,7 @@
 package browser
 
 import (
+	"bufio"
 	"context"
 	_ "embed"
 	"encoding/json"
@@ -9,9 +10,11 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -177,6 +180,44 @@ func NewManager(cfg *config.Config, db *storage.BoltDB, llmManager *llm.Manager)
 // SetAgentManager 设置 Agent 管理器
 func (m *Manager) SetAgentManager(agentManager AgentManagerInterface) {
 	m.agentManager = agentManager
+}
+
+// GetConfig returns the manager's Config reference (read-only, for path inspection).
+func (m *Manager) GetConfig() *config.Config {
+	return m.config
+}
+
+// AdoptBrowser registers an externally-connected rod.Browser into the instance
+// system so that subsequent calls to getInstanceBrowser / IsRunning work correctly.
+// This is used to "adopt" an orphaned Chrome that was reconnected via DevToolsActivePort.
+func (m *Manager) AdoptBrowser(ctx context.Context, instanceID string, browser *rod.Browser) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if instanceID == "" {
+		instanceID = "default"
+	}
+
+	// Load instance metadata from DB (best-effort)
+	instance, _ := m.db.GetBrowserInstance(instanceID)
+
+	rt := &BrowserInstanceRuntime{
+		instance:  instance,
+		browser:   browser,
+		startTime: time.Now(),
+	}
+
+	m.instances[instanceID] = rt
+
+	// Update backward-compat legacy fields
+	if m.currentInstanceID == "" || m.currentInstanceID == instanceID {
+		m.currentInstanceID = instanceID
+		m.browser = browser
+		m.isRunning = true
+		m.startTime = rt.startTime
+	}
+
+	logger.Info(ctx, "✓ Adopted orphaned browser into instance: %s", instanceID)
 }
 
 // Start 启动浏览器
@@ -1514,10 +1555,15 @@ func checkBrowserConnection(browser *rod.Browser) error {
 // 这些锁文件在 Chrome 异常退出时可能没有被清理，导致无法启动新实例
 func (m *Manager) cleanupSingletonLock(ctx context.Context, userDataDir string) error {
 	// Chrome 在用户数据目录中创建的锁文件
+	// Linux: SingletonLock, SingletonCookie, SingletonSocket
+	// Windows: lockfile
+	// Stale debug port file: DevToolsActivePort
 	lockFiles := []string{
 		"SingletonLock",
 		"SingletonCookie",
 		"SingletonSocket",
+		"lockfile",          // Windows Chrome lock file
+		"DevToolsActivePort", // Stale debug port info (prevents reconnection confusion)
 	}
 
 	var cleanedFiles []string
@@ -1558,6 +1604,144 @@ func (m *Manager) cleanupSingletonLock(ctx context.Context, userDataDir string) 
 
 	if len(failedFiles) > 0 {
 		logger.Warn(ctx, "Failed to clean some lock files: %v (may need manual cleanup or process is still running)", failedFiles)
+	}
+
+	return nil
+}
+
+// KillOrphanedChromeProcesses finds and kills Chrome processes that are using
+// the configured user data directory. This is used as a last resort when lock
+// files cannot be removed because a Chrome process from a previous session is
+// still running and holding them.
+func (m *Manager) KillOrphanedChromeProcesses(ctx context.Context) error {
+	userDataDir := ""
+	if m.config.Browser != nil {
+		userDataDir = m.config.Browser.UserDataDir
+	}
+	if userDataDir == "" {
+		return fmt.Errorf("user data dir is not configured")
+	}
+
+	// Use the base directory name for matching in process command lines.
+	// e.g. "chrome_user_data" — safe for pattern matching, no special chars.
+	dirName := filepath.Base(userDataDir)
+	logger.Info(ctx, "[killOrphanedChrome] Looking for Chrome processes using data dir pattern: %s", dirName)
+
+	if runtime.GOOS == "windows" {
+		return m.killOrphanedChromeWindows(ctx, userDataDir, dirName)
+	}
+	return m.killOrphanedChromeUnix(ctx, userDataDir, dirName)
+}
+
+// killOrphanedChromeWindows kills orphaned Chrome processes on Windows.
+func (m *Manager) killOrphanedChromeWindows(ctx context.Context, userDataDir, dirName string) error {
+	// Step 1: Use WMIC to list all chrome.exe processes with their command lines.
+	// WMIC output format (CSV): Node,CommandLine,ProcessId
+	cmd := exec.Command("wmic", "process", "where", "name='chrome.exe'", "get", "processid,commandline", "/format:csv")
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		logger.Warn(ctx, "[killOrphanedChrome] WMIC query failed: %v (output: %s), falling back to taskkill", err, strings.TrimSpace(string(output)))
+		return m.killAllChromeWindows(ctx)
+	}
+
+	outputStr := string(output)
+	logger.Info(ctx, "[killOrphanedChrome] WMIC returned %d bytes of process info", len(outputStr))
+
+	// Step 2: Parse output to find PIDs whose command line contains our user data dir name.
+	var killedPIDs []string
+	scanner := bufio.NewScanner(strings.NewReader(outputStr))
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" || strings.HasPrefix(line, "Node,") {
+			continue
+		}
+
+		// Normalize slashes for matching (Chrome may use / or \)
+		normalizedLine := strings.ReplaceAll(line, "/", "\\")
+		if !strings.Contains(normalizedLine, dirName) && !strings.Contains(line, dirName) {
+			continue
+		}
+
+		// Extract PID — last CSV field
+		parts := strings.Split(line, ",")
+		if len(parts) < 2 {
+			continue
+		}
+		pidStr := strings.TrimSpace(parts[len(parts)-1])
+		if pidStr == "" || pidStr == "ProcessId" {
+			continue
+		}
+		if _, err := strconv.Atoi(pidStr); err != nil {
+			continue // not a valid PID
+		}
+
+		logger.Info(ctx, "[killOrphanedChrome] Found matching Chrome process PID: %s", pidStr)
+		killCmd := exec.Command("taskkill", "/F", "/PID", pidStr)
+		killOutput, killErr := killCmd.CombinedOutput()
+		if killErr != nil {
+			logger.Warn(ctx, "[killOrphanedChrome] Failed to kill PID %s: %v (%s)", pidStr, killErr, strings.TrimSpace(string(killOutput)))
+		} else {
+			killedPIDs = append(killedPIDs, pidStr)
+			logger.Info(ctx, "[killOrphanedChrome] ✓ Killed Chrome PID: %s", pidStr)
+		}
+	}
+
+	if len(killedPIDs) > 0 {
+		logger.Info(ctx, "[killOrphanedChrome] Successfully killed %d Chrome process(es): %v", len(killedPIDs), killedPIDs)
+		return nil
+	}
+
+	// If WMIC didn't find matching processes but lockfile is still held, try killing all Chrome.
+	lockPath := filepath.Join(userDataDir, "lockfile")
+	if _, err := os.Stat(lockPath); err == nil {
+		logger.Warn(ctx, "[killOrphanedChrome] No matching processes found via WMIC, but lockfile exists. Falling back to kill all Chrome.")
+		return m.killAllChromeWindows(ctx)
+	}
+
+	logger.Info(ctx, "[killOrphanedChrome] No orphaned Chrome processes found")
+	return nil
+}
+
+// killAllChromeWindows kills ALL chrome.exe processes — used as a last resort.
+func (m *Manager) killAllChromeWindows(ctx context.Context) error {
+	logger.Warn(ctx, "[killOrphanedChrome] ⚠ Killing ALL Chrome processes (last resort)")
+	cmd := exec.Command("taskkill", "/F", "/IM", "chrome.exe", "/T")
+	output, err := cmd.CombinedOutput()
+	outputStr := strings.TrimSpace(string(output))
+	if err != nil {
+		lower := strings.ToLower(outputStr)
+		if strings.Contains(lower, "not found") || strings.Contains(lower, "没有找到") || strings.Contains(lower, "no running") {
+			logger.Info(ctx, "[killOrphanedChrome] No Chrome processes found")
+			return nil
+		}
+		logger.Warn(ctx, "[killOrphanedChrome] taskkill error: %v, output: %s", err, outputStr)
+		return fmt.Errorf("taskkill failed: %w (output: %s)", err, outputStr)
+	}
+	logger.Info(ctx, "[killOrphanedChrome] taskkill output: %s", outputStr)
+	return nil
+}
+
+// killOrphanedChromeUnix kills orphaned Chrome processes on Linux/macOS.
+func (m *Manager) killOrphanedChromeUnix(ctx context.Context, userDataDir, dirName string) error {
+	// Try fuser to kill processes holding lock files
+	for _, lockName := range []string{"SingletonLock", "lockfile"} {
+		lockPath := filepath.Join(userDataDir, lockName)
+		if _, err := os.Stat(lockPath); err != nil {
+			continue
+		}
+		cmd := exec.Command("fuser", "-k", lockPath)
+		output, err := cmd.CombinedOutput()
+		if err != nil {
+			logger.Warn(ctx, "[killOrphanedChrome] fuser -k %s failed: %v (%s)", lockName, err, strings.TrimSpace(string(output)))
+		} else {
+			logger.Info(ctx, "[killOrphanedChrome] ✓ Killed process holding %s", lockName)
+		}
+	}
+
+	// Also try pkill with matching pattern
+	cmd := exec.Command("pkill", "-f", fmt.Sprintf("chrome.*%s", dirName))
+	if output, err := cmd.CombinedOutput(); err != nil {
+		logger.Info(ctx, "[killOrphanedChrome] pkill result: %v (%s)", err, strings.TrimSpace(string(output)))
 	}
 
 	return nil
@@ -1838,10 +2022,32 @@ func (m *Manager) startInstanceInternal(ctx context.Context, instanceID string) 
 		}
 
 		// 启动浏览器
+		logger.Info(ctx, "[startInstanceInternal] Launching Chrome...")
 		url, err = l.Launch()
 		if err != nil {
+			errMsg := err.Error()
+			logger.Error(ctx, "[startInstanceInternal] Chrome launch failed: %v", err)
+
+			// Log additional diagnostics for debug URL failures
+			if strings.Contains(errMsg, "Failed to get the debug url") {
+				logger.Error(ctx, "[startInstanceInternal] Chrome failed to provide debug URL. Possible causes:")
+				logger.Error(ctx, "  1. Another Chrome process is using the same user data directory")
+				logger.Error(ctx, "  2. Chrome crashed immediately on startup")
+				logger.Error(ctx, "  3. Lock files (lockfile/SingletonLock) are held by a zombie process")
+
+				// Check if lock files still exist
+				if instance.UserDataDir != "" {
+					for _, name := range []string{"lockfile", "SingletonLock", "DevToolsActivePort"} {
+						p := filepath.Join(instance.UserDataDir, name)
+						if info, statErr := os.Stat(p); statErr == nil {
+							logger.Error(ctx, "  → %s EXISTS (size: %d, modified: %s)", name, info.Size(), info.ModTime().Format("15:04:05"))
+						}
+					}
+				}
+			}
+
 			// 如果启动失败，尝试再次清理锁文件并给出提示
-			if instance.UserDataDir != "" && strings.Contains(err.Error(), "SingletonLock") {
+			if instance.UserDataDir != "" && strings.Contains(errMsg, "SingletonLock") {
 				logger.Error(ctx, "Browser launch failed due to SingletonLock, attempting cleanup...")
 				m.cleanupSingletonLock(ctx, instance.UserDataDir)
 				return fmt.Errorf("failed to launch browser (SingletonLock issue): %w\nTip: The lock files have been cleaned up. Please try starting the instance again", err)

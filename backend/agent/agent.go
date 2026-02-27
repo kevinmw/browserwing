@@ -1151,8 +1151,8 @@ func (am *AgentManager) SendMessage(ctx context.Context, sessionID, userMessage 
 	session.UpdatedAt = time.Now()
 	am.mu.Unlock()
 
-	// 保存用户消息到数据库（跳过AI控制临时会话）
-	if len(sessionID) < 11 || sessionID[:11] != "ai_control_" {
+	// 保存用户消息到数据库（跳过AI控制/AI探索临时会话）
+	if !strings.HasPrefix(sessionID, "ai_control_") && !strings.HasPrefix(sessionID, "ai_explore_") {
 		dbUserMsg := &models.AgentMessage{
 			ID:        userMsg.ID,
 			SessionID: sessionID,
@@ -1293,8 +1293,8 @@ func (am *AgentManager) SendMessage(ctx context.Context, sessionID, userMessage 
 		session.UpdatedAt = time.Now()
 		am.mu.Unlock()
 
-		// 保存到数据库（跳过AI控制临时会话）
-		if len(sessionID) < 11 || sessionID[:11] != "ai_control_" {
+		// 保存到数据库（跳过AI控制/AI探索临时会话）
+		if !strings.HasPrefix(sessionID, "ai_control_") && !strings.HasPrefix(sessionID, "ai_explore_") {
 			dbAssistantMsg := &models.AgentMessage{
 				ID:        assistantMsg.ID,
 				SessionID: sessionID,
@@ -1454,59 +1454,57 @@ needTools:
 				}
 
 			case interfaces.AgentEventToolCall:
-				// 工具调用
-				if event.ToolCall == nil {
-					logger.Error(ctx, "Tool call event missing ToolCall information")
-					continue
-				}
-				tc := event.ToolCall
+			// 工具调用
+			if event.ToolCall == nil {
+				logger.Error(ctx, "Tool call event missing ToolCall information")
+				continue
+			}
+			tc := event.ToolCall
 
-				// 获取或创建工具调用记录
-				toolCall, exists := toolCallMap[tc.Name]
-				if !exists {
-					toolCall = &ToolCall{
-						ToolName:  tc.Name,
-						Status:    "calling",
-						Timestamp: time.Now(),
-						Arguments: make(map[string]interface{}),
-					}
+			// 每次工具调用都创建新记录（同名工具可能被多次调用）
+			toolCall := &ToolCall{
+				ToolName:  tc.Name,
+				Status:    "calling",
+				Timestamp: time.Now(),
+				Arguments: make(map[string]interface{}),
+			}
 
-					logger.Info(ctx, "[ToolCall Event] Tool: %s, Arguments JSON: %s", tc.Name, tc.Arguments)
+			logger.Info(ctx, "[ToolCall Event] Tool: %s, Arguments JSON: %s", tc.Name, tc.Arguments)
 
-					// 提取 instructions 和其他参数
-					if tc.Arguments != "" {
-						// 解析参数 JSON
-						var args map[string]interface{}
-						if err := json.Unmarshal([]byte(tc.Arguments), &args); err == nil {
-							logger.Info(ctx, "[ToolCall Event] Parsed args: %+v", args)
+			// 提取 instructions 和其他参数
+			if tc.Arguments != "" {
+				// 解析参数 JSON
+				var args map[string]interface{}
+				if err := json.Unmarshal([]byte(tc.Arguments), &args); err == nil {
+					logger.Info(ctx, "[ToolCall Event] Parsed args: %+v", args)
 
-							// 提取 instructions
-							if instructions, ok := args["instructions"].(string); ok {
-								toolCall.Instructions = instructions
-								logger.Info(ctx, "[ToolCall Event] Found instructions: %s", instructions)
-								// 从参数中移除 instructions，保留实际的工具参数
-								delete(args, "instructions")
-							} else {
-								logger.Warn(ctx, "[ToolCall Event] No instructions found in args")
-							}
-							toolCall.Arguments = args
-							logger.Info(ctx, "[ToolCall Event] Final toolCall - Instructions: %s, Args: %+v",
-								toolCall.Instructions, toolCall.Arguments)
-						} else {
-							logger.Error(ctx, "[ToolCall Event] Failed to parse arguments JSON: %v", err)
-						}
+					// 提取 instructions
+					if instructions, ok := args["instructions"].(string); ok {
+						toolCall.Instructions = instructions
+						logger.Info(ctx, "[ToolCall Event] Found instructions: %s", instructions)
+						// 从参数中移除 instructions，保留实际的工具参数
+						delete(args, "instructions")
 					} else {
-						logger.Warn(ctx, "[ToolCall Event] Arguments is empty")
+						logger.Warn(ctx, "[ToolCall Event] No instructions found in args")
 					}
+					toolCall.Arguments = args
+					logger.Info(ctx, "[ToolCall Event] Final toolCall - Instructions: %s, Args: %+v",
+						toolCall.Instructions, toolCall.Arguments)
+				} else {
+					logger.Error(ctx, "[ToolCall Event] Failed to parse arguments JSON: %v", err)
+				}
+			} else {
+				logger.Warn(ctx, "[ToolCall Event] Arguments is empty")
+			}
 
-					toolCallMap[tc.Name] = toolCall
-					assistantMsg.ToolCalls = append(assistantMsg.ToolCalls, toolCall)
-				}
-				// 发送工具调用状态
-				streamChan <- StreamChunk{
-					Type:     "tool_call",
-					ToolCall: toolCall,
-				}
+			toolCallMap[tc.Name] = toolCall
+			assistantMsg.ToolCalls = append(assistantMsg.ToolCalls, toolCall)
+
+			// 发送工具调用状态
+			streamChan <- StreamChunk{
+				Type:     "tool_call",
+				ToolCall: toolCall,
+			}
 			case interfaces.AgentEventThinking:
 				// 思考过程(可选择性展示)
 				logger.Debug(ctx, "Agent thinking: %s", event.ThinkingStep)
@@ -1587,9 +1585,8 @@ func (am *AgentManager) ListSessions() []*ChatSession {
 
 	sessions := make([]*ChatSession, 0, len(am.sessions))
 	for _, session := range am.sessions {
-		// 过滤掉脚本回放时创建的AI控制临时会话
-		// 这些会话ID以"ai_control_"开头，不应该显示在前端
-		if len(session.ID) >= 11 && session.ID[:11] == "ai_control_" {
+		// 过滤掉临时会话（AI控制、AI探索）
+		if strings.HasPrefix(session.ID, "ai_control_") || strings.HasPrefix(session.ID, "ai_explore_") {
 			continue
 		}
 		sessions = append(sessions, session)

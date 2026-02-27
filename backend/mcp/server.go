@@ -508,6 +508,11 @@ func (s *MCPServer) GetSSEServer() *server.SSEServer {
 	return s.sseServer
 }
 
+// GetExecutor returns the underlying Executor instance
+func (s *MCPServer) GetExecutor() *executor.Executor {
+	return s.executor
+}
+
 // callExecutorTool 调用 Executor 工具
 func (s *MCPServer) callExecutorTool(ctx context.Context, name string, arguments map[string]interface{}) (interface{}, error) {
 	logger.Info(ctx, "CallTool: Executing Executor tool: %s, arguments %+v", name, arguments)

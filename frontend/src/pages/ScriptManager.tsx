@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
+import { useNavigate } from 'react-router-dom'
 import api, { Script, ScriptAction, RecordingConfig, ScriptExecution, BrowserInstance } from '../api/client'
-import { Lightbulb, RefreshCw, Play, Trash2, Clock, FileCode, ChevronDown, ChevronUp, Edit2, X, Check, ExternalLink, GripVertical, Download, Upload, CheckSquare, Square, Copy, Tag, Folder, HelpCircle, Clipboard, Plus, Variable } from 'lucide-react'
+import { Lightbulb, RefreshCw, Play, Trash2, Clock, FileCode, ChevronDown, ChevronUp, Edit2, X, Check, ExternalLink, GripVertical, Download, Upload, CheckSquare, Square, Copy, Tag, Folder, HelpCircle, Clipboard, Plus, Variable, Compass } from 'lucide-react'
 import Toast from '../components/Toast'
 import ConfirmDialog from '../components/ConfirmDialog'
 import ScriptParamsDialog from '../components/ScriptParamsDialog'
@@ -26,6 +27,7 @@ import { CSS } from '@dnd-kit/utilities'
 
 export default function ScriptManager() {
   const { t, language } = useLanguage()
+  const navigate = useNavigate()
 
   // 标签页状态
   const [activeTab, setActiveTab] = useState<'scripts' | 'executions'>('scripts')
@@ -1479,6 +1481,13 @@ export default function ScriptManager() {
           </div>
           {activeTab === 'scripts' && (
             <div className="flex items-center space-x-2">
+              <button
+                onClick={() => navigate('/ai-explorer')}
+                className="btn-secondary flex items-center space-x-1.5"
+              >
+                <Compass className="w-3.5 h-3.5" />
+                <span>{t('aiExplorer.title')}</span>
+              </button>
               <button
                 onClick={() => setShowRecordingConfig(true)}
                 className="btn-secondary flex items-center space-x-1.5"

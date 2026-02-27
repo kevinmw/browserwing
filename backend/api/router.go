@@ -296,6 +296,16 @@ func SetupRouter(handler *Handler, agentHandler interface{}, frontendFS fs.FS, e
 			executorAPI.POST("/close-page", handler.ExecutorClosePage)                // 关闭当前页面
 		}
 
+		// AI 探索（自主生成脚本）
+		explore := api.Group("/ai-explore")
+		{
+			explore.POST("/start", handler.StartExploration)
+			explore.GET("/:id/stream", handler.StreamExploration)
+			explore.POST("/:id/stop", handler.StopExploration)
+			explore.GET("/:id/script", handler.GetExplorationScript)
+			explore.POST("/:id/save", handler.SaveExplorationScript)
+		}
+
 		// Agent 聊天相关
 		if agentHandler != nil {
 			type AgentHandlerInterface interface {

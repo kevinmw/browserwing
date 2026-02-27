@@ -163,6 +163,12 @@ func main() {
 	// 将 Agent 管理器注入到浏览器管理器
 	browserManager.SetAgentManager(agentManager)
 
+	// 初始化 AI 探索器
+	explorer := browser.NewExplorer(browserManager)
+	explorer.SetAgentManager(agentManager)
+	explorer.SetExecutorRecorder(mcpServer.GetExecutor())
+	log.Println("✓ AI Explorer initialized successfully")
+
 	// 创建HTTP处理器
 	handler := api.NewHandler(db, browserManager, cfg, llmManager)
 
@@ -171,6 +177,9 @@ func main() {
 
 	// 将 Agent 管理器注入到 Handler (用于 LLM 配置更新后的热加载)
 	handler.SetAgentManager(agentManager)
+
+	// 将 AI 探索器注入到 Handler
+	handler.SetExplorer(explorer)
 
 	// 初始化定时任务执行器（使用真实的浏览器管理器和 Agent 管理器）
 	scriptPlayer := scheduler.NewRealScriptPlayer(db, browserManager)

@@ -179,6 +179,14 @@ func (e *Executor) Navigate(ctx context.Context, url string, opts *NavigateOptio
 		result.Data["accessibility_snapshot"] = accessibilitySnapshotText
 	}
 
+	// 录制模式：记录导航操作
+	e.recordOp(OperationRecord{
+		Type:      "navigate",
+		URL:       url,
+		Success:   true,
+		Timestamp: time.Now(),
+	})
+
 	return result, nil
 }
 
@@ -309,6 +317,16 @@ func (e *Executor) Click(ctx context.Context, identifier string, opts *ClickOpti
 		logger.Info(ctx, "[Click] ✓ Enhanced JavaScript click succeeded: %s", identifier)
 	}
 
+	// 录制模式：记录点击操作
+	e.recordOp(OperationRecord{
+		Type:          "click",
+		Identifier:    identifier,
+		ResolvedXPath: getElementXPath(elem),
+		Success:       true,
+		Timestamp:     time.Now(),
+		ElementInfo:   getElementInfo(elem),
+	})
+
 	// 同时返回当前的页面可访问性快照
 	snapshot, err := e.GetAccessibilitySnapshot(ctx)
 	if err != nil {
@@ -407,6 +425,17 @@ func (e *Executor) Type(ctx context.Context, identifier string, text string, opt
 		}
 	}
 
+	// 录制模式：记录输入操作
+	e.recordOp(OperationRecord{
+		Type:          "input",
+		Identifier:    identifier,
+		ResolvedXPath: getElementXPath(elem),
+		Value:         text,
+		Success:       true,
+		Timestamp:     time.Now(),
+		ElementInfo:   getElementInfo(elem),
+	})
+
 	// 同时返回当前的页面可访问性快照
 	snapshot, err := e.GetAccessibilitySnapshot(ctx)
 	if err != nil {
@@ -472,6 +501,17 @@ func (e *Executor) Select(ctx context.Context, identifier string, value string, 
 			Timestamp: time.Now(),
 		}, err
 	}
+
+	// 录制模式：记录选择操作
+	e.recordOp(OperationRecord{
+		Type:          "select",
+		Identifier:    identifier,
+		ResolvedXPath: getElementXPath(elem),
+		Value:         value,
+		Success:       true,
+		Timestamp:     time.Now(),
+		ElementInfo:   getElementInfo(elem),
+	})
 
 	// 同时返回当前的页面可访问性快照
 	snapshot, err := e.GetAccessibilitySnapshot(ctx)
@@ -1134,6 +1174,12 @@ func (e *Executor) ScrollToBottom(ctx context.Context) (*OperationResult, error)
 		}, err
 	}
 
+	e.recordOp(OperationRecord{
+		Type:      "scroll",
+		Success:   true,
+		Timestamp: time.Now(),
+	})
+
 	return &OperationResult{
 		Success:   true,
 		Message:   "Successfully scrolled to bottom",
@@ -1155,6 +1201,12 @@ func (e *Executor) GoBack(ctx context.Context) (*OperationResult, error) {
 			Timestamp: time.Now(),
 		}, err
 	}
+
+	e.recordOp(OperationRecord{
+		Type:      "go_back",
+		Success:   true,
+		Timestamp: time.Now(),
+	})
 
 	return &OperationResult{
 		Success:   true,
@@ -1178,6 +1230,12 @@ func (e *Executor) GoForward(ctx context.Context) (*OperationResult, error) {
 		}, err
 	}
 
+	e.recordOp(OperationRecord{
+		Type:      "go_forward",
+		Success:   true,
+		Timestamp: time.Now(),
+	})
+
 	return &OperationResult{
 		Success:   true,
 		Message:   "Successfully navigated forward",
@@ -1199,6 +1257,12 @@ func (e *Executor) Reload(ctx context.Context) (*OperationResult, error) {
 			Timestamp: time.Now(),
 		}, err
 	}
+
+	e.recordOp(OperationRecord{
+		Type:      "reload",
+		Success:   true,
+		Timestamp: time.Now(),
+	})
 
 	return &OperationResult{
 		Success:   true,
@@ -1300,6 +1364,13 @@ func (e *Executor) Evaluate(ctx context.Context, script string) (*OperationResul
 		}, err
 	}
 
+	e.recordOp(OperationRecord{
+		Type:      "evaluate",
+		JSCode:    script,
+		Success:   true,
+		Timestamp: time.Now(),
+	})
+
 	return &OperationResult{
 		Success:   true,
 		Message:   "Successfully executed script",
@@ -1384,6 +1455,12 @@ func (e *Executor) PressKey(ctx context.Context, key string, opts *PressKeyOptio
 					Timestamp: time.Now(),
 				}, err
 			}
+			e.recordOp(OperationRecord{
+				Type:      "keyboard",
+				Key:       key,
+				Success:   true,
+				Timestamp: time.Now(),
+			})
 			return &OperationResult{
 				Success:   true,
 				Message:   fmt.Sprintf("Successfully pressed key: %s", key),
@@ -1405,6 +1482,13 @@ func (e *Executor) PressKey(ctx context.Context, key string, opts *PressKeyOptio
 		}, err
 	}
 	keyboard.Release(keyCode)
+
+	e.recordOp(OperationRecord{
+		Type:      "keyboard",
+		Key:       key,
+		Success:   true,
+		Timestamp: time.Now(),
+	})
 
 	return &OperationResult{
 		Success:   true,

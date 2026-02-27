@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/browserwing/browserwing/models"
 	"github.com/browserwing/browserwing/pkg/logger"
 	"github.com/browserwing/browserwing/services/browser"
 	"github.com/go-rod/rod"
@@ -18,13 +19,14 @@ type Executor struct {
 	ctx     context.Context
 
 	// RefID 缓存（用于稳定的元素引用）
-	// 参考 agent-browser: 使用语义化定位器而非 BackendNodeID
 	refIDMutex     sync.RWMutex
 	refIDMap       map[string]*RefData // refID -> 语义化定位器数据
 	refIDCounter   int
 	refIDSnapshot  *AccessibilitySnapshot
 	refIDTimestamp time.Time
 	refIDTTL       time.Duration
+
+	Recorder *OperationRecorder
 }
 
 // NewExecutor 创建 Executor 实例
@@ -33,7 +35,8 @@ func NewExecutor(browser *browser.Manager) *Executor {
 		Browser:  browser,
 		ctx:      context.Background(),
 		refIDMap: make(map[string]*RefData),
-		refIDTTL: 300 * time.Second, // 默认 300 秒 TTL（5分钟），更长的缓存时间
+		refIDTTL: 300 * time.Second,
+		Recorder: NewOperationRecorder(),
 	}
 }
 
@@ -714,4 +717,127 @@ func (e *Executor) WaitUntilReady(ctx context.Context, timeout time.Duration) er
 	}
 
 	return fmt.Errorf("timeout waiting for executor to be ready")
+}
+
+// ========== 录制模式 ==========
+
+// StartRecordMode 开启操作录制模式
+func (e *Executor) StartRecordMode() {
+	e.Recorder.Enable()
+}
+
+// StopRecordMode 停止录制模式并返回所有记录的操作（OperationRecord 格式）
+func (e *Executor) StopRecordMode() []OperationRecord {
+	ops := e.Recorder.GetOperations()
+	e.Recorder.Disable()
+	e.Recorder.Reset()
+	return ops
+}
+
+// StopRecordModeAsOpRecords 停止录制模式并返回 models.OpRecord 格式
+func (e *Executor) StopRecordModeAsOpRecords() []models.OpRecord {
+	return convertToOpRecords(e.StopRecordMode())
+}
+
+// IsRecordMode 检查是否处于录制模式
+func (e *Executor) IsRecordMode() bool {
+	return e.Recorder.IsEnabled()
+}
+
+// GetRecordedOps 获取当前录制的操作（不清空）
+func (e *Executor) GetRecordedOps() []OperationRecord {
+	return e.Recorder.GetOperations()
+}
+
+// GetRecordedOpsAsOpRecords returns recorded ops in models.OpRecord format (no import cycle)
+func (e *Executor) GetRecordedOpsAsOpRecords() []models.OpRecord {
+	return convertToOpRecords(e.GetRecordedOps())
+}
+
+// NavigateForExplore navigates to a URL (used by explorer)
+func (e *Executor) NavigateForExplore(ctx context.Context, url string) error {
+	_, err := e.Navigate(ctx, url, nil)
+	return err
+}
+
+func convertToOpRecords(ops []OperationRecord) []models.OpRecord {
+	result := make([]models.OpRecord, len(ops))
+	for i, op := range ops {
+		result[i] = models.OpRecord{
+			Type:          op.Type,
+			Identifier:    op.Identifier,
+			ResolvedXPath: op.ResolvedXPath,
+			Value:         op.Value,
+			URL:           op.URL,
+			Key:           op.Key,
+			JSCode:        op.JSCode,
+			Success:       op.Success,
+			Timestamp:     op.Timestamp,
+			ElementInfo:   op.ElementInfo,
+		}
+	}
+	return result
+}
+
+// recordOp 记录一个操作（内部调用）
+func (e *Executor) recordOp(op OperationRecord) {
+	e.Recorder.Record(op)
+}
+
+// getElementXPath 通过 JS 获取元素的稳定 Full XPath
+func getElementXPath(elem *rod.Element) string {
+	result, err := elem.Eval(`() => {
+		function getXPath(el) {
+			if (!el || el.nodeType !== 1) return '';
+			if (el.id && document.querySelectorAll('#' + CSS.escape(el.id)).length === 1) {
+				return '//*[@id="' + el.id + '"]';
+			}
+			var parts = [];
+			while (el && el.nodeType === 1) {
+				var idx = 0;
+				var sib = el.previousSibling;
+				while (sib) {
+					if (sib.nodeType === 1 && sib.nodeName === el.nodeName) idx++;
+					sib = sib.previousSibling;
+				}
+				var part = el.nodeName.toLowerCase();
+				if (idx > 0 || el.nextSibling) {
+					var total = 0;
+					var next = el.nextSibling;
+					while (next) {
+						if (next.nodeType === 1 && next.nodeName === el.nodeName) total++;
+						next = next.nextSibling;
+					}
+					if (idx > 0 || total > 0) {
+						part += '[' + (idx + 1) + ']';
+					}
+				}
+				parts.unshift(part);
+				el = el.parentNode;
+			}
+			return '/' + parts.join('/');
+		}
+		return getXPath(this);
+	}`)
+	if err != nil {
+		return ""
+	}
+	return result.Value.Str()
+}
+
+// getElementInfo 获取元素的基本信息（tag, text）
+func getElementInfo(elem *rod.Element) map[string]string {
+	info := make(map[string]string)
+	tagResult, err := elem.Eval(`() => this.tagName ? this.tagName.toLowerCase() : ''`)
+	if err == nil {
+		info["tag"] = tagResult.Value.Str()
+	}
+	text, err := elem.Text()
+	if err == nil && len(text) > 0 {
+		if len(text) > 100 {
+			text = text[:100]
+		}
+		info["text"] = text
+	}
+	return info
 }

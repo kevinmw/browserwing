@@ -45,6 +45,7 @@ type Handler struct {
 	mcpServer      MCPHTTPHandler // MCP 服务器（使用 interface{} 避免循环依赖）
 	agentManager   interface{}    // Agent 管理器（用于 LLM 配置更新后的热加载）
 	scheduler      interface{}    // 定时任务调度器
+	explorer       *browser.Explorer  // AI 探索器
 }
 
 func NewHandler(
@@ -1153,6 +1154,11 @@ func (h *Handler) SetMCPServer(mcpServer MCPHTTPHandler) {
 // SetAgentManager 设置 Agent 管理器实例
 func (h *Handler) SetAgentManager(agentManager interface{}) {
 	h.agentManager = agentManager
+}
+
+// SetExplorer 设置 AI 探索器实例
+func (h *Handler) SetExplorer(explorer *browser.Explorer) {
+	h.explorer = explorer
 }
 
 // GenerateMCPConfig 使用 LLM 自动生成 MCP 配置

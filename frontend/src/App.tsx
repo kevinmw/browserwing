@@ -10,6 +10,7 @@ import ScriptManager from './pages/ScriptManager'
 import LLMManager from './pages/LLMManager'
 import PromptManage from './pages/PromptManage'
 import AgentChat from './pages/AgentChat'
+import AIExplorer from './pages/AIExplorer'
 import ToolManager from './pages/ToolManager'
 import Login from './pages/Login'
 import Settings from './pages/Settings'
@@ -81,6 +82,7 @@ function App() {
           <Route path="llm" element={<LLMManager />} />
           <Route path="prompts" element={<PromptManage />} />
           <Route path="agent" element={<AgentChat />} />
+          <Route path="ai-explorer" element={<AIExplorer />} />
           <Route path="tools" element={<ToolManager />} />
           <Route path="settings" element={<Settings />} />
         </Route>
