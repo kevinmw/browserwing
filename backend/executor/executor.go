@@ -23,6 +23,7 @@ type Executor struct {
 	refIDMap       map[string]*RefData // refID -> 语义化定位器数据
 	refIDCounter   int
 	refIDSnapshot  *AccessibilitySnapshot
+	refIDPage      *rod.Page // 缓存生成时的页面指针，用于检测页面切换
 	refIDTimestamp time.Time
 	refIDTTL       time.Duration
 
@@ -70,6 +71,17 @@ func (e *Executor) GetPage() *Page {
 	return page
 }
 
+// InvalidateSnapshotCache clears the cached accessibility snapshot.
+// This should be called when the active page changes (tab switch, new tab, navigation, etc.)
+func (e *Executor) InvalidateSnapshotCache() {
+	e.refIDMutex.Lock()
+	defer e.refIDMutex.Unlock()
+	e.refIDSnapshot = nil
+	e.refIDPage = nil
+	e.refIDMap = make(map[string]*RefData)
+	e.refIDCounter = 0
+}
+
 // GetAccessibilitySnapshot 获取页面的可访问性快照（带 RefID 缓存）
 func (e *Executor) GetAccessibilitySnapshot(ctx context.Context) (*AccessibilitySnapshot, error) {
 	page := e.Browser.GetActivePage()
@@ -77,9 +89,11 @@ func (e *Executor) GetAccessibilitySnapshot(ctx context.Context) (*Accessibility
 		return nil, fmt.Errorf("no active page")
 	}
 
-	// 检查缓存
+	// 检查缓存：TTL 有效 且 页面未切换
 	e.refIDMutex.RLock()
-	cacheValid := e.refIDSnapshot != nil && time.Since(e.refIDTimestamp) < e.refIDTTL
+	cacheValid := e.refIDSnapshot != nil &&
+		time.Since(e.refIDTimestamp) < e.refIDTTL &&
+		e.refIDPage == page
 	if cacheValid {
 		logger.Info(ctx, "[GetAccessibilitySnapshot] Using cached snapshot (age: %v, %d refs)", 
 			time.Since(e.refIDTimestamp), len(e.refIDMap))
@@ -104,6 +118,7 @@ func (e *Executor) GetAccessibilitySnapshot(ctx context.Context) (*Accessibility
 	e.refIDCounter = 0
 	e.assignRefIDs(snapshot)
 	e.refIDSnapshot = snapshot
+	e.refIDPage = page
 	e.refIDTimestamp = time.Now()
 
 	logger.Info(ctx, "[GetAccessibilitySnapshot] Cached new snapshot with %d refs (TTL: %v)",

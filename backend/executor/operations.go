@@ -2001,6 +2001,12 @@ func (e *Executor) newTab(ctx context.Context, browser *rod.Browser, url string)
 		logger.Warn(ctx, "New tab loaded but with warning: %v", err)
 	}
 
+	// 新标签页自动成为活动标签页
+	e.Browser.SetActivePage(newPage)
+
+	// 页面已切换，使 snapshot 缓存失效
+	e.InvalidateSnapshotCache()
+
 	// 获取新标签页的信息
 	info, err := newPage.Info()
 	if err != nil {
@@ -2072,6 +2078,12 @@ func (e *Executor) switchTab(ctx context.Context, browser *rod.Browser, index in
 		}, err
 	}
 
+	// 更新 Manager 中的 activePage，确保后续操作使用新标签页
+	e.Browser.SetActivePage(targetPage)
+
+	// 页面已切换，使 snapshot 缓存失效
+	e.InvalidateSnapshotCache()
+
 	// 获取标签页信息
 	info, _ := targetPage.Info()
 
@@ -2123,6 +2135,10 @@ func (e *Executor) closeTab(ctx context.Context, browser *rod.Browser, index int
 	targetPage := pageTabs[index]
 	info, _ := targetPage.Info()
 
+	// 检查是否关闭的是当前活动页面
+	currentPage := e.Browser.GetActivePage()
+	closingActivePage := (targetPage == currentPage)
+
 	// 关闭标签页
 	err = targetPage.Close()
 	if err != nil {
@@ -2132,6 +2148,25 @@ func (e *Executor) closeTab(ctx context.Context, browser *rod.Browser, index int
 			Timestamp: time.Now(),
 		}, err
 	}
+
+	// 如果关闭的是活动页面，切换到剩余的第一个页面标签
+	if closingActivePage {
+		remainingPages, _ := browser.Pages()
+		for _, p := range remainingPages {
+			pInfo, pErr := p.Info()
+			if pErr != nil {
+				continue
+			}
+			if pInfo.Type == "page" {
+				e.Browser.SetActivePage(p)
+				_, _ = p.Activate()
+				break
+			}
+		}
+	}
+
+	// 使 snapshot 缓存失效
+	e.InvalidateSnapshotCache()
 
 	logger.Info(ctx, "Closed tab %d: %s", index, info.URL)
 
