@@ -30,6 +30,16 @@
 
 ## 快速开始
 
+### 让 AI 帮你安装
+
+只需将以下内容发送给你的 AI 助手（OpenClaw、Cursor、Claude Code 等）：
+
+> **"帮我安装下 browserwing，根据 https://raw.githubusercontent.com/browserwing/browserwing/main/INSTALL.md"**
+
+AI 会自动阅读安装指南，帮你完成安装、配置、Chrome 环境检查和 Skill 集成。
+
+---
+
 ### 方式 A — 通过包管理器安装（推荐）
 
 **使用 npm：**

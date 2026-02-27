@@ -49,6 +49,16 @@ You can now combine any scripts into a SKILL.md.
 
 ## Quick Start
 
+### Let Your AI Agent Install It For You
+
+Simply send the following message to your AI agent (OpenClaw, Cursor, Claude Code, etc.):
+
+> **"Help me install BrowserWing following https://raw.githubusercontent.com/browserwing/browserwing/main/INSTALL.md"**
+
+The agent will read the guide and handle the installation, configuration, Chrome setup, and Skill integration automatically.
+
+---
+
 ### Option A — Install via Package Manager (recommended)
 
 **Using npm:**
