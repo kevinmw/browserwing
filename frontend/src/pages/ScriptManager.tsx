@@ -976,10 +976,21 @@ export default function ScriptManager() {
 
       try {
         const text = await file.text()
-        const data = JSON.parse(text)
+        let data: any
+        try {
+          data = JSON.parse(text)
+        } catch (parseErr: any) {
+          showMessage(t('script.import.parseError', { error: parseErr.message || String(parseErr) }), 'error')
+          return
+        }
 
         if (!data.scripts || !Array.isArray(data.scripts)) {
-          showMessage(t('script.messages.invalidFormat'), 'error')
+          showMessage(t('script.messages.invalidFormat') + ' — missing "scripts" array', 'error')
+          return
+        }
+
+        if (data.scripts.length === 0) {
+          showMessage(t('script.messages.invalidFormat') + ' — "scripts" array is empty', 'error')
           return
         }
 
@@ -998,9 +1009,9 @@ export default function ScriptManager() {
           // 没有重复ID，直接导入
           await performImport(data, false)
         }
-      } catch (err) {
+      } catch (err: any) {
         console.error('解析文件失败:', err)
-        showMessage(t('script.messages.invalidFormat'), 'error')
+        showMessage(t('script.import.parseError', { error: err.message || String(err) }), 'error')
       }
     }
     input.click()
@@ -1012,11 +1023,33 @@ export default function ScriptManager() {
       return
     }
 
+    let data: any
     try {
-      const data = JSON.parse(jsonInput)
+      data = JSON.parse(jsonInput)
+    } catch (parseErr: any) {
+      setJsonInputError(t('script.import.jsonCodeInvalid') + ': ' + (parseErr.message || String(parseErr)))
+      return
+    }
 
+    try {
       if (!data.scripts || !Array.isArray(data.scripts)) {
-        setJsonInputError(t('script.messages.invalidFormat'))
+        setJsonInputError(t('script.messages.invalidFormat') + ' — missing "scripts" array')
+        return
+      }
+
+      if (data.scripts.length === 0) {
+        setJsonInputError(t('script.messages.invalidFormat') + ' — "scripts" array is empty')
+        return
+      }
+
+      // 前端预校验：检查每个脚本的必要字段
+      const validationErrors: string[] = []
+      for (let i = 0; i < data.scripts.length; i++) {
+        const err = validateScriptData(data.scripts[i], i)
+        if (err) validationErrors.push(err)
+      }
+      if (validationErrors.length > 0) {
+        setJsonInputError(validationErrors.join('\n'))
         return
       }
 
@@ -1040,10 +1073,28 @@ export default function ScriptManager() {
         // 没有重复ID，直接导入
         await performImport(data, false)
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error('解析JSON代码失败:', err)
-      setJsonInputError(t('script.import.jsonCodeInvalid'))
+      setJsonInputError(t('script.import.jsonCodeInvalid') + ': ' + (err.message || String(err)))
     }
+  }
+
+  // 校验单个脚本的必要字段
+  const validateScriptData = (script: any, index: number): string | null => {
+    const name = script.name || `#${index + 1}`
+    if (!script.name) {
+      return t('script.import.missingName', { index: index + 1 })
+    }
+    if (!script.url) {
+      return t('script.import.missingUrl', { name })
+    }
+    if (script.actions === undefined || script.actions === null) {
+      return t('script.import.missingActions', { name })
+    }
+    if (!Array.isArray(script.actions)) {
+      return t('script.import.invalidActions', { name })
+    }
+    return null
   }
 
   const performImport = async (data: any, overwrite: boolean) => {
@@ -1051,11 +1102,21 @@ export default function ScriptManager() {
       setLoading(true)
       let successCount = 0
       let failCount = 0
+      const failedDetails: string[] = []
       const existingIds = new Set(scripts.map(s => s.id))
       const existingNames = new Set(scripts.map(s => s.name))
 
-      for (const script of data.scripts) {
+      for (let idx = 0; idx < data.scripts.length; idx++) {
+        const script = data.scripts[idx]
         try {
+          // 前端 schema 校验
+          const validationError = validateScriptData(script, idx)
+          if (validationError) {
+            failCount++
+            failedDetails.push(validationError)
+            continue
+          }
+
           if (overwrite && script.id && existingIds.has(script.id)) {
             // 覆盖现有脚本 - 只更新导入数据中存在的字段
             const updateData: any = {
@@ -1130,9 +1191,13 @@ export default function ScriptManager() {
             await api.createScript(createData)
             successCount++
           }
-        } catch (err) {
+        } catch (err: any) {
           console.error('导入脚本失败:', script.name, err)
           failCount++
+          const apiError = err.response?.data?.error
+            ? t(err.response.data.error)
+            : (err.message || 'Unknown error')
+          failedDetails.push(t('script.import.apiFailed', { name: script.name || `#${idx + 1}`, error: apiError }))
         }
       }
 
@@ -1140,12 +1205,16 @@ export default function ScriptManager() {
 
       if (failCount === 0) {
         showMessage(t('script.importSuccess', { count: successCount }), 'success')
+      } else if (failedDetails.length > 0) {
+        const details = failedDetails.join('; ')
+        showMessage(t('script.importPartialDetails', { success: successCount, failed: failCount, details }), 'error')
       } else {
-        showMessage(t('script.importPartial', { success: successCount, failed: failCount }), 'info')
+        showMessage(t('script.importPartial', { success: successCount, failed: failCount }), 'error')
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error('导入失败:', err)
-      showMessage(t('script.messages.invalidFormat'), 'error')
+      const errorMsg = err.message || String(err)
+      showMessage(t('script.import.parseError', { error: errorMsg }), 'error')
     } finally {
       setLoading(false)
       setShowImportConfirm(false)
