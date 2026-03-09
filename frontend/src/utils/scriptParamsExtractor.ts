@@ -25,10 +25,10 @@ export function extractPlaceholdersFromText(text: string | undefined | null): st
  */
 export function extractScriptParameters(script: Script): string[] {
   const allPlaceholders = new Set<string>()
-  
+
   // 从 URL 中提取
   extractPlaceholdersFromText(script.url).forEach(p => allPlaceholders.add(p))
-  
+
   // 从每个 action 中提取
   script.actions.forEach((action: ScriptAction) => {
     extractPlaceholdersFromText(action.selector).forEach(p => allPlaceholders.add(p))
@@ -36,7 +36,7 @@ export function extractScriptParameters(script: Script): string[] {
     extractPlaceholdersFromText(action.value).forEach(p => allPlaceholders.add(p))
     extractPlaceholdersFromText(action.url).forEach(p => allPlaceholders.add(p))
     extractPlaceholdersFromText(action.js_code).forEach(p => allPlaceholders.add(p))
-    
+
     // 从文件路径中提取
     if (action.file_paths) {
       action.file_paths.forEach((path: string) => {
@@ -44,7 +44,7 @@ export function extractScriptParameters(script: Script): string[] {
       })
     }
   })
-  
+
   const variables = Array.from(allPlaceholders).sort()
   if (script.variables) {
     Object.keys(script.variables).forEach(variable => {
@@ -53,7 +53,6 @@ export function extractScriptParameters(script: Script): string[] {
       }
     })
   }
-  console.log('variables', variables)
   return variables
 }
 
