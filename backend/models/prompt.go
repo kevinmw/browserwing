@@ -288,7 +288,7 @@ Please generate the following configuration (return JSON format only, without an
   "input_schema": {
     "type": "object",
     "properties": {
-      // Generate parameter definitions based on ${variable} placeholders in the script
+      // Generate parameter definitions based on {{variable}} placeholders in the script
       // Each parameter includes type and description
     },
     "required": ["List of required parameters"]
@@ -298,7 +298,7 @@ Please generate the following configuration (return JSON format only, without an
 Requirements:
 1. command_name should clearly express the script's functionality
 2. command_description should be concise and clear
-3. input_schema should define parameters based on ${xxx} placeholders used in the script
+3. input_schema should define parameters based on {{xxx}} placeholders used in the script
 4. If there are no placeholders, input_schema can be an empty object or omit properties
 5. Return only JSON without any other text explanations`,
 		CreatedAt: time.Now(),

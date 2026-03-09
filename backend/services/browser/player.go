@@ -2790,7 +2790,7 @@ func (p *Player) executeKeyboard(ctx context.Context, page *rod.Page, action mod
 	return nil
 }
 
-// resolveVariableValue 解析变量引用，支持 ${variable} 和 ${variable.property} 语法
+// resolveVariableValue 解析变量引用，支持 {{variable}} 和 {{variable.property}} 语法
 func (p *Player) resolveVariableValue(value interface{}) interface{} {
 	// 如果不是字符串，直接返回
 	str, ok := value.(string)
@@ -2798,14 +2798,14 @@ func (p *Player) resolveVariableValue(value interface{}) interface{} {
 		return value
 	}
 
-	// 检查是否包含变量引用语法 ${...}
-	if !strings.HasPrefix(str, "${") || !strings.HasSuffix(str, "}") {
+	// 检查是否包含变量引用语法 {{...}}
+	if !strings.HasPrefix(str, "{{") || !strings.HasSuffix(str, "}}") {
 		return value
 	}
 
-	// 提取变量引用：${variable.property} -> variable.property
-	ref := strings.TrimPrefix(str, "${")
-	ref = strings.TrimSuffix(ref, "}")
+	// 提取变量引用：{{variable.property}} -> variable.property
+	ref := strings.TrimPrefix(str, "{{")
+	ref = strings.TrimSuffix(ref, "}}")
 
 	// 分割变量名和属性
 	parts := strings.Split(ref, ".")

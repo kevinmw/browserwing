@@ -209,7 +209,7 @@ func (p *RealScriptPlayer) PlayScript(scriptID string, variables map[string]stri
 	return result, nil
 }
 
-// replacePlaceholders 替换占位符 ${xxx}
+// replacePlaceholders 替换占位符 {{xxx}}
 func replacePlaceholders(text string, params map[string]string) string {
 	if text == "" || len(params) == 0 {
 		return text
@@ -217,7 +217,7 @@ func replacePlaceholders(text string, params map[string]string) string {
 
 	result := text
 	for key, value := range params {
-		placeholder := fmt.Sprintf("${%s}", key)
+		placeholder := fmt.Sprintf("{{%s}}", key)
 		result = strings.ReplaceAll(result, placeholder, value)
 	}
 	return result

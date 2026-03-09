@@ -1794,7 +1794,7 @@ func (h *Handler) UpdateRecordingConfig(c *gin.Context) {
 // ============= 辅助函数 =============
 
 // replacePlaceholders 替换字符串中的占位符
-// 支持 ${field} 格式，例如 ${keyword}, ${page}, ${category} 等
+// 支持 {{field}} 格式，例如 {{keyword}}, {{page}}, {{category}} 等
 func replacePlaceholders(text string, params map[string]string) string {
 	if text == "" {
 		return text
@@ -1803,7 +1803,7 @@ func replacePlaceholders(text string, params map[string]string) string {
 	// 替换所有占位符
 	result := text
 	for key, value := range params {
-		placeholder := fmt.Sprintf("${%s}", key)
+		placeholder := fmt.Sprintf("{{%s}}", key)
 		result = strings.ReplaceAll(result, placeholder, value)
 	}
 
@@ -6208,13 +6208,13 @@ func generateAdminSkillMD(host string) string {
 	sb.WriteString("    \"actions\": [\n")
 	sb.WriteString("      {\"type\": \"navigate\", \"url\": \"https://www.bilibili.com\"},\n")
 	sb.WriteString("      {\"type\": \"click\", \"identifier\": \".nav-search-input\"},\n")
-	sb.WriteString("      {\"type\": \"type\", \"identifier\": \".nav-search-input\", \"value\": \"${keyword}\"},\n")
+	sb.WriteString("      {\"type\": \"type\", \"identifier\": \".nav-search-input\", \"value\": \"{{keyword}}\"},\n")
 	sb.WriteString("      {\"type\": \"press_key\", \"key\": \"Enter\"},\n")
 	sb.WriteString("      {\"type\": \"wait\", \"timeout\": 3}\n")
 	sb.WriteString("    ]\n")
 	sb.WriteString("  }'\n")
 	sb.WriteString("```\n")
-	sb.WriteString("**Variables:** Use `${variable_name}` syntax in action values. These become input parameters when the script is executed.\n\n")
+	sb.WriteString("**Variables:** Use `{{variable_name}}` syntax in action values. These become input parameters when the script is executed.\n\n")
 
 	sb.WriteString("### Update a Script\n")
 	sb.WriteString("```bash\n")
@@ -6278,7 +6278,7 @@ func generateAdminSkillMD(host string) string {
 	sb.WriteString("    }\n")
 	sb.WriteString("  }'\n")
 	sb.WriteString("```\n")
-	sb.WriteString("**Variables:** Pass values for `${variable_name}` placeholders defined in the script actions.\n\n")
+	sb.WriteString("**Variables:** Pass values for `{{variable_name}}` placeholders defined in the script actions.\n\n")
 
 	sb.WriteString("### Get Play Result (Extracted Data)\n")
 	sb.WriteString("```bash\n")
@@ -6475,7 +6475,7 @@ func generateAdminSkillMD(host string) string {
 	sb.WriteString("- Verify the script exists: `GET /api/v1/scripts/<id>`\n")
 	sb.WriteString("- Check if the browser is running: `GET /api/v1/browser/instances`\n")
 	sb.WriteString("- Review execution history: `GET /api/v1/script-executions`\n")
-	sb.WriteString("- Ensure all required `${variables}` are provided in the play request\n")
+	sb.WriteString("- Ensure all required `{{variables}}` are provided in the play request\n")
 	sb.WriteString("- Target website may have changed — try re-recording or updating the script\n\n")
 
 	sb.WriteString("**4. Page elements not found**\n")

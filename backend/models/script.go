@@ -185,7 +185,7 @@ type Script struct {
 	MCPCommandDescription string                 `json:"mcp_command_description"` // MCP 命令描述
 	MCPInputSchema        map[string]interface{} `json:"mcp_input_schema"`        // MCP 命令输入参数 schema（JSON Schema 格式）
 
-	// 预设变量（可以在脚本中使用 ${变量名} 引用，也可以在外部调用时传入覆盖）
+	// 预设变量（可以在脚本中使用 {{变量名}} 引用，也可以在外部调用时传入覆盖）
 	Variables map[string]string `json:"variables,omitempty"` // 预设变量，key 为变量名，value 为默认值
 }
 

@@ -329,12 +329,12 @@ func (s *MCPServer) replacePlaceholders(text string, params map[string]string) s
 
 	result := text
 	for key, value := range params {
-		placeholder := fmt.Sprintf("${%s}", key)
+		placeholder := fmt.Sprintf("{{%s}}", key)
 		result = strings.ReplaceAll(result, placeholder, value)
 	}
 
 	// 清理未替换的占位符
-	re := regexp.MustCompile(`\$\{([^}]+)\}`)
+	re := regexp.MustCompile(`\{\{([^}]+)\}\}`)
 	result = re.ReplaceAllString(result, "")
 
 	return result
