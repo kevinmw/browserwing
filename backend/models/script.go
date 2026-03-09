@@ -27,8 +27,8 @@ type ScriptAction struct {
 	Value     string            `json:"value"`     // 输入值或选择值
 	URL       string            `json:"url"`       // 导航URL
 	Duration  int               `json:"duration"`  // 延迟时长（毫秒，用于 sleep 类型）
-	X         int               `json:"x"`         // 鼠标X坐标
-	Y         int               `json:"y"`         // 鼠标Y坐标
+	X         interface{}       `json:"x"`         // 鼠标X坐标（支持 int 或变量引用字符串）
+	Y         interface{}       `json:"y"`         // 鼠标Y坐标（支持 int 或变量引用字符串）
 	Text      string            `json:"text"`      // 元素文本内容
 	TagName   string            `json:"tag_name"`  // 元素标签名
 	Attrs     map[string]string `json:"attrs"`     // 元素属性
@@ -61,9 +61,9 @@ type ScriptAction struct {
 	XHRID  string `json:"xhr_id,omitempty"` // XHR请求唯一标识符
 
 	// 截图相关字段（用于 screenshot 类型）
-	ScreenshotMode   string `json:"screenshot_mode,omitempty"`   // viewport, fullpage, region
-	ScreenshotWidth  int    `json:"screenshot_width,omitempty"`  // 截图区域宽度（region模式）
-	ScreenshotHeight int    `json:"screenshot_height,omitempty"` // 截图区域高度（region模式）
+	ScreenshotMode   string      `json:"screenshot_mode,omitempty"`   // viewport, fullpage, region
+	ScreenshotWidth  interface{} `json:"screenshot_width,omitempty"`  // 截图区域宽度（region模式，支持 int 或变量引用字符串）
+	ScreenshotHeight interface{} `json:"screenshot_height,omitempty"` // 截图区域高度（region模式，支持 int 或变量引用字符串）
 
 	// AI控制相关字段（用于 ai_control 类型）
 	AIControlPrompt      string `json:"ai_control_prompt,omitempty"`       // AI控制的提示词

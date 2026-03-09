@@ -2664,6 +2664,70 @@ func (p *Player) executeKeyboard(ctx context.Context, page *rod.Page, action mod
 	return nil
 }
 
+// resolveVariableValue 解析变量引用，支持 ${variable} 和 ${variable.property} 语法
+func (p *Player) resolveVariableValue(value interface{}) interface{} {
+	// 如果不是字符串，直接返回
+	str, ok := value.(string)
+	if !ok {
+		return value
+	}
+
+	// 检查是否包含变量引用语法 ${...}
+	if !strings.HasPrefix(str, "${") || !strings.HasSuffix(str, "}") {
+		return value
+	}
+
+	// 提取变量引用：${variable.property} -> variable.property
+	ref := strings.TrimPrefix(str, "${")
+	ref = strings.TrimSuffix(ref, "}")
+
+	// 分割变量名和属性
+	parts := strings.Split(ref, ".")
+	varName := parts[0]
+	varProperty := ""
+
+	if len(parts) > 1 {
+		varProperty = parts[1]
+	}
+
+	// 从 extractedData 中查找变量
+	varData, exists := p.extractedData[varName]
+	if !exists {
+		logger.Warn(nil, "Variable not found: %s", varName)
+		return value
+	}
+
+	// 如果没有指定属性，返回整个变量值
+	if varProperty == "" {
+		return varData
+	}
+
+	// 如果指定了属性，尝试从 map 中提取
+	varMap, ok := varData.(map[string]interface{})
+	if !ok {
+		// 尝试将 JSON 字符串解析为 map
+		if jsonStr, ok := varData.(string); ok {
+			var parsedMap map[string]interface{}
+			if err := json.Unmarshal([]byte(jsonStr), &parsedMap); err == nil {
+				varMap = parsedMap
+			}
+		}
+	}
+
+	if varMap == nil {
+		logger.Warn(nil, "Variable is not a map: %s", varName)
+		return value
+	}
+
+	// 返回指定的属性值
+	if propValue, exists := varMap[varProperty]; exists {
+		return propValue
+	}
+
+	logger.Warn(nil, "Property not found: %s.%s", varName, varProperty)
+	return value
+}
+
 // executeScreenshot 执行截图操作
 func (p *Player) executeScreenshot(ctx context.Context, page *rod.Page, action models.ScriptAction) error {
 	mode := action.ScreenshotMode
@@ -2706,17 +2770,62 @@ func (p *Player) executeScreenshot(ctx context.Context, page *rod.Page, action m
 
 	case "region":
 		// 区域截图
-		if action.ScreenshotWidth <= 0 || action.ScreenshotHeight <= 0 {
-			return fmt.Errorf("invalid region dimensions: width=%d, height=%d", action.ScreenshotWidth, action.ScreenshotHeight)
+		// 解析变量引用（支持 ${variable.property} 语法）
+		x := p.resolveVariableValue(action.X)
+		y := p.resolveVariableValue(action.Y)
+		width := p.resolveVariableValue(action.ScreenshotWidth)
+		height := p.resolveVariableValue(action.ScreenshotHeight)
+
+		// 转换为整数
+		var xVal, yVal, widthVal, heightVal int
+		var ok bool
+
+		if xVal, ok = x.(int); !ok {
+			if f, ok := x.(float64); ok {
+				xVal = int(f)
+			} else {
+				return fmt.Errorf("invalid x value: %v (type: %T)", x, x)
+			}
 		}
+
+		if yVal, ok = y.(int); !ok {
+			if f, ok := y.(float64); ok {
+				yVal = int(f)
+			} else {
+				return fmt.Errorf("invalid y value: %v (type: %T)", y, y)
+			}
+		}
+
+		if widthVal, ok = width.(int); !ok {
+			if f, ok := width.(float64); ok {
+				widthVal = int(f)
+			} else {
+				return fmt.Errorf("invalid width value: %v (type: %T)", width, width)
+			}
+		}
+
+		if heightVal, ok = height.(int); !ok {
+			if f, ok := height.(float64); ok {
+				heightVal = int(f)
+			} else {
+				return fmt.Errorf("invalid height value: %v (type: %T)", height, height)
+			}
+		}
+
+		if widthVal <= 0 || heightVal <= 0 {
+			return fmt.Errorf("invalid region dimensions: width=%d, height=%d", widthVal, heightVal)
+		}
+
+		logger.Info(ctx, "Region screenshot with resolved values: x=%d, y=%d, w=%d, h=%d",
+			xVal, yVal, widthVal, heightVal)
 
 		// 使用 proto 设置截图区域
 		screenshot, err = page.Screenshot(false, &proto.PageCaptureScreenshot{
 			Clip: &proto.PageViewport{
-				X:      float64(action.X),
-				Y:      float64(action.Y),
-				Width:  float64(action.ScreenshotWidth),
-				Height: float64(action.ScreenshotHeight),
+				X:      float64(xVal),
+				Y:      float64(yVal),
+				Width:  float64(widthVal),
+				Height: float64(heightVal),
 				Scale:  1,
 			},
 		})
@@ -2724,7 +2833,7 @@ func (p *Player) executeScreenshot(ctx context.Context, page *rod.Page, action m
 			return fmt.Errorf("failed to take region screenshot: %w", err)
 		}
 		logger.Info(ctx, "Region screenshot captured: x=%d, y=%d, w=%d, h=%d",
-			action.X, action.Y, action.ScreenshotWidth, action.ScreenshotHeight)
+			xVal, yVal, widthVal, heightVal)
 
 	default:
 		return fmt.Errorf("unsupported screenshot mode: %s", mode)
