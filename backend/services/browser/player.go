@@ -1094,6 +1094,9 @@ func (p *Player) evaluateCondition(ctx context.Context, condition *models.Action
 	operator := condition.Operator
 	expectedValue := condition.Value
 
+	logger.Info(ctx, "[evaluateCondition] Evaluating: %s %s %s", varName, operator, expectedValue)
+	logger.Info(ctx, "[evaluateCondition] Available variables in map: %v", variables)
+
 	// 处理 exists 和 not_exists 操作符
 	if operator == "exists" {
 		_, exists := variables[varName]
@@ -1104,11 +1107,17 @@ func (p *Player) evaluateCondition(ctx context.Context, condition *models.Action
 		return !exists, nil
 	}
 
-	// 获取变量值
+	// 获取变量值 - 支持从 variables 或 extractedData 中获取
 	actualValue, exists := variables[varName]
 	if !exists {
-		logger.Warn(ctx, "Variable not found for condition: %s", varName)
-		return false, fmt.Errorf("variable not found: %s", varName)
+		// 尝试从 extractedData 中获取（支持变量属性访问，如 varName.property）
+		logger.Info(ctx, "[evaluateCondition] Variable '%s' not in variables map, trying extractedData", varName)
+		actualValue, exists = p.getValueFromExtractedData(ctx, varName)
+		if !exists {
+			logger.Warn(ctx, "Variable not found for condition: %s", varName)
+			return false, fmt.Errorf("variable not found: %s", varName)
+		}
+		logger.Info(ctx, "[evaluateCondition] Found variable '%s' in extractedData: %s", varName, actualValue)
 	}
 
 	// 根据操作符进行比较
@@ -1196,6 +1205,123 @@ func compareNumeric(actual, expected, operator string) (bool, error) {
 	}
 
 	return false, fmt.Errorf("unsupported numeric operator: %s", operator)
+}
+
+// getValueFromExtractedData 从 extractedData 中获取变量值
+// 支持属性访问，例如：variableName.property
+func (p *Player) getValueFromExtractedData(ctx context.Context, varName string) (string, bool) {
+	// 解析变量名和属性（支持 variable.property 格式）
+	parts := strings.Split(varName, ".")
+	baseVarName := parts[0]
+	varProperty := ""
+	if len(parts) > 1 {
+		varProperty = strings.Join(parts[1:], ".")
+	}
+
+	// 从 extractedData 获取基础变量
+	varData, exists := p.extractedData[baseVarName]
+	if !exists {
+		return "", false
+	}
+
+	// 如果没有属性访问，直接返回值（转为字符串）
+	if varProperty == "" {
+		return fmt.Sprintf("%v", varData), true
+	}
+
+	// 处理属性访问
+	// 首先尝试将数据解析为 map
+	var dataMap map[string]interface{}
+
+	// 检查 varData 是否已经是字符串（JSON 字符串）
+	if jsonStr, ok := varData.(string); ok {
+		logger.Info(ctx, "[getValueFromExtractedData] Data is already string, directly unmarshaling")
+		if err := json.Unmarshal([]byte(jsonStr), &dataMap); err == nil {
+			// 递归获取嵌套属性
+			value, exists := getNestedProperty(dataMap, varProperty)
+			if exists {
+				result := fmt.Sprintf("%v", value)
+				logger.Info(ctx, "[getValueFromExtractedData] Found property %s.%s = %s", baseVarName, varProperty, result)
+				return result, true
+			} else {
+				logger.Info(ctx, "[getValueFromExtractedData] Property %s not found in map", varProperty)
+			}
+		} else {
+			logger.Info(ctx, "[getValueFromExtractedData] Failed to unmarshal string: %v", err)
+		}
+	} else {
+		// 处理 Rod 的 gson.JSON 类型或其他类型
+		logger.Info(ctx, "[getValueFromExtractedData] Data is type %T (not string), attempting double-encoding", varData)
+		// 尝试序列化为 JSON 字符串再解析
+		if jsonBytes, err := json.Marshal(varData); err == nil {
+			// 检查序列化后是否是 JSON 字符串（带转义引号）
+			var strValue string
+			if err := json.Unmarshal(jsonBytes, &strValue); err == nil {
+				// 是一个 JSON 字符串，需要解析两次（gson.JSON 的情况）
+				logger.Info(ctx, "[getValueFromExtractedData] Double-encoded JSON detected, parsing: %s", strValue[:min(100, len(strValue))])
+				if err := json.Unmarshal([]byte(strValue), &dataMap); err == nil {
+					// 递归获取嵌套属性
+					value, exists := getNestedProperty(dataMap, varProperty)
+					if exists {
+						result := fmt.Sprintf("%v", value)
+						logger.Info(ctx, "[getValueFromExtractedData] Found property %s.%s = %s", baseVarName, varProperty, result)
+						return result, true
+					} else {
+						logger.Info(ctx, "[getValueFromExtractedData] Property %s not found in map", varProperty)
+					}
+				} else {
+					logger.Info(ctx, "[getValueFromExtractedData] Failed to parse double-encoded JSON: %v", err)
+				}
+			} else {
+				// 不是 JSON 字符串，尝试直接解析
+				logger.Info(ctx, "[getValueFromExtractedData] Directly unmarshaling: %s", string(jsonBytes[:min(100, len(jsonBytes))]))
+				if err := json.Unmarshal(jsonBytes, &dataMap); err == nil {
+					// 递归获取嵌套属性
+					value, exists := getNestedProperty(dataMap, varProperty)
+					if exists {
+						result := fmt.Sprintf("%v", value)
+						logger.Info(ctx, "[getValueFromExtractedData] Found property %s.%s = %s", baseVarName, varProperty, result)
+						return result, true
+					} else {
+						logger.Info(ctx, "[getValueFromExtractedData] Property %s not found in map", varProperty)
+					}
+				} else {
+					logger.Info(ctx, "[getValueFromExtractedData] Failed to unmarshal: %v", err)
+				}
+			}
+		} else {
+			logger.Info(ctx, "[getValueFromExtractedData] Failed to marshal: %v", err)
+		}
+	}
+
+	return "", false
+}
+
+// getNestedProperty 递归获取嵌套属性
+func getNestedProperty(data map[string]interface{}, propertyPath string) (interface{}, bool) {
+	parts := strings.Split(propertyPath, ".")
+	current := data
+
+	for i, part := range parts {
+		value, exists := current[part]
+		if !exists {
+			return nil, false
+		}
+
+		// 如果是最后一个属性，返回值
+		if i == len(parts)-1 {
+			return value, true
+		}
+
+		// 否则继续深入
+		nextMap, ok := value.(map[string]interface{})
+		if !ok {
+			return nil, false
+		}
+		current = nextMap
+	}
+
+	return nil, false
 }
 
 // executeAction 执行单个操作
@@ -2687,7 +2813,8 @@ func (p *Player) resolveVariableValue(value interface{}) interface{} {
 	varProperty := ""
 
 	if len(parts) > 1 {
-		varProperty = parts[1]
+		// 支持多级嵌套属性访问：regions.region2.x
+		varProperty = strings.Join(parts[1:], ".")
 	}
 
 	// 从 extractedData 中查找变量
@@ -2766,14 +2893,45 @@ func (p *Player) resolveVariableValue(value interface{}) interface{} {
 		return value
 	}
 
-	// 返回指定的属性值
-	if propValue, exists := varMap[varProperty]; exists {
+	// 支持多级嵌套属性访问，如 regions.region2.x
+	propValue := p.getNestedProperty(varMap, varProperty)
+	if propValue != nil {
 		logger.Info(context.Background(), "Found property %s.%s: %v (%T)", varName, varProperty, propValue, propValue)
 		return propValue
 	}
 
 	logger.Warn(context.Background(), "Property not found: %s.%s", varName, varProperty)
 	return value
+}
+
+// getNestedProperty 从嵌套 map 中获取属性值
+func (p *Player) getNestedProperty(data map[string]interface{}, propertyPath string) interface{} {
+	parts := strings.Split(propertyPath, ".")
+	current := data
+
+	for i, part := range parts {
+		value, exists := current[part]
+		if !exists {
+			logger.Warn(context.Background(), "Property path not found at part '%s' (full path: %s)", part, propertyPath)
+			return nil
+		}
+
+		// 如果是最后一级，返回值
+		if i == len(parts)-1 {
+			return value
+		}
+
+		// 如果不是最后一级，需要继续深入
+		nextMap, ok := value.(map[string]interface{})
+		if !ok {
+			logger.Warn(context.Background(), "Property '%s' is not a map, cannot access nested property '%s' (full path: %s, type: %T)", part, strings.Join(parts[i+1:], "."), propertyPath, value)
+			return nil
+		}
+
+		current = nextMap
+	}
+
+	return nil
 }
 
 // executeScreenshot 执行截图操作
