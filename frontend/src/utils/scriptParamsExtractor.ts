@@ -1,22 +1,22 @@
 import { Script, ScriptAction } from '../api/client'
 
 /**
- * 从文本中提取所有 ${xxx} 格式的占位符
+ * 从文本中提取所有 {{xxx}} 格式的占位符
  */
 export function extractPlaceholdersFromText(text: string | undefined | null): string[] {
   if (!text) return []
-  
-  const placeholderPattern = /\$\{([^}]+)\}/g
+
+  const placeholderPattern = /\{\{([^}]+)\}\}/g
   const placeholders: string[] = []
   let match
-  
+
   while ((match = placeholderPattern.exec(text)) !== null) {
     const placeholder = match[1]
     if (!placeholders.includes(placeholder)) {
       placeholders.push(placeholder)
     }
   }
-  
+
   return placeholders
 }
 
