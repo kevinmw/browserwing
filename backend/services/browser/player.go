@@ -2693,7 +2693,7 @@ func (p *Player) resolveVariableValue(value interface{}) interface{} {
 	// 从 extractedData 中查找变量
 	varData, exists := p.extractedData[varName]
 	if !exists {
-		logger.Warn(nil, "Variable not found: %s", varName)
+		logger.Warn(context.Background(), "Variable not found: %s", varName)
 		return value
 	}
 
@@ -2707,24 +2707,72 @@ func (p *Player) resolveVariableValue(value interface{}) interface{} {
 	if !ok {
 		// 尝试将 JSON 字符串解析为 map
 		if jsonStr, ok := varData.(string); ok {
+			preview := jsonStr
+			if len(preview) > 200 {
+				preview = preview[:200] + "..."
+			}
+			logger.Info(context.Background(), "Attempting to parse JSON string for variable %s: %s", varName, preview)
 			var parsedMap map[string]interface{}
-			if err := json.Unmarshal([]byte(jsonStr), &parsedMap); err == nil {
+			if err := json.Unmarshal([]byte(jsonStr), &parsedMap); err != nil {
+				logger.Warn(context.Background(), "Failed to parse JSON for variable %s: %v", varName, err)
+			} else {
+				logger.Info(context.Background(), "Successfully parsed JSON for variable %s", varName)
 				varMap = parsedMap
+			}
+		} else {
+			// 尝试处理 Rod 的 gson.JSON 类型
+			logger.Info(context.Background(), "Variable %s is type %T, attempting to convert", varName, varData)
+			// 尝试序列化为 JSON 字符串再解析
+			if jsonBytes, err := json.Marshal(varData); err == nil {
+				// 检查序列化后是否是 JSON 字符串（带转义引号）
+				var strValue string
+				if err := json.Unmarshal(jsonBytes, &strValue); err == nil {
+					// 是一个 JSON 字符串，需要解析两次
+					preview := strValue
+					if len(preview) > 200 {
+						preview = preview[:200] + "..."
+					}
+					logger.Info(context.Background(), "Variable %s is a JSON string: %s", varName, preview)
+					var parsedMap map[string]interface{}
+					if err := json.Unmarshal([]byte(strValue), &parsedMap); err == nil {
+						logger.Info(context.Background(), "Successfully parsed double-encoded JSON for variable %s", varName)
+						varMap = parsedMap
+					} else {
+						logger.Warn(context.Background(), "Failed to parse double-encoded JSON for variable %s: %v", varName, err)
+					}
+				} else {
+					// 不是 JSON 字符串，尝试直接解析
+					preview := string(jsonBytes)
+					if len(preview) > 200 {
+						preview = preview[:200] + "..."
+					}
+					logger.Info(context.Background(), "Marshaled variable %s to JSON: %s", varName, preview)
+					var parsedMap map[string]interface{}
+					if err := json.Unmarshal(jsonBytes, &parsedMap); err == nil {
+						logger.Info(context.Background(), "Successfully parsed marshaled JSON for variable %s", varName)
+						varMap = parsedMap
+					} else {
+						logger.Warn(context.Background(), "Failed to parse marshaled JSON for variable %s: %v", varName, err)
+					}
+				}
+			} else {
+				logger.Warn(context.Background(), "Variable %s is not a map or string, type: %T", varName, varData)
 			}
 		}
 	}
 
 	if varMap == nil {
-		logger.Warn(nil, "Variable is not a map: %s", varName)
+		logger.Warn(context.Background(), "Variable is not a map: %s", varName)
 		return value
 	}
 
 	// 返回指定的属性值
 	if propValue, exists := varMap[varProperty]; exists {
+		logger.Info(context.Background(), "Found property %s.%s: %v (%T)", varName, varProperty, propValue, propValue)
 		return propValue
 	}
 
-	logger.Warn(nil, "Property not found: %s.%s", varName, varProperty)
+	logger.Warn(context.Background(), "Property not found: %s.%s", varName, varProperty)
 	return value
 }
 
@@ -2771,10 +2819,16 @@ func (p *Player) executeScreenshot(ctx context.Context, page *rod.Page, action m
 	case "region":
 		// 区域截图
 		// 解析变量引用（支持 ${variable.property} 语法）
+		logger.Info(ctx, "Resolving variables: x=%v, y=%v, width=%v, height=%v",
+			action.X, action.Y, action.ScreenshotWidth, action.ScreenshotHeight)
+
 		x := p.resolveVariableValue(action.X)
 		y := p.resolveVariableValue(action.Y)
 		width := p.resolveVariableValue(action.ScreenshotWidth)
 		height := p.resolveVariableValue(action.ScreenshotHeight)
+
+		logger.Info(ctx, "Resolved values: x=%v (%T), y=%v (%T), width=%v (%T), height=%v (%T)",
+			x, x, y, y, width, width, height, height)
 
 		// 转换为整数
 		var xVal, yVal, widthVal, heightVal int
