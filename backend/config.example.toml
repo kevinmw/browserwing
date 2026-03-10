@@ -19,6 +19,7 @@ model = "gpt-3.5-turbo"
 [browser]
 headless = false  # 是否无头模式运行
 bin_path = ""  # 浏览器可执行文件路径，留空使用系统默认
+auto_start = false  # 启动时自动启动浏览器
 
 # 远程 Chrome 调试 URL（可选）
 # 如果配置了此项，将连接到远程 Chrome 而不是启动本地浏览器

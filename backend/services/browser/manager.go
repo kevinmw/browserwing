@@ -361,11 +361,16 @@ func (m *Manager) Start(ctx context.Context) error {
 				} else {
 					os.Remove(testFile)
 
-					// 清理可能存在的锁文件（在启动前）
-					logger.Info(ctx, "Checking and cleaning up lock files before launch...")
+					// ⚠️ 重要：启动前强制清理锁文件（解决重启问题）
+					logger.Info(ctx, "🔧 Cleaning up lock files before launch...")
 					if err := m.cleanupSingletonLock(ctx, userDataDir); err != nil {
 						logger.Warn(ctx, "Failed to cleanup singleton lock: %v", err)
+					} else {
+						logger.Info(ctx, "✓ Lock files cleaned up")
 					}
+
+					// 额外等待，确保文件系统操作完成
+					time.Sleep(200 * time.Millisecond)
 
 					l = l.UserDataDir(userDataDir)
 					logger.Info(ctx, fmt.Sprintf("✓ Using user data directory: %s", userDataDir))
@@ -522,6 +527,37 @@ func (m *Manager) Start(ctx context.Context) error {
 	m.browser = browser
 	m.isRunning = true
 	m.startTime = time.Now()
+
+	// 🔧 重要：将默认实例添加到 m.instances map，使前端能够识别
+	// 这对于 auto-start 功能特别重要
+	defaultInstance, err := m.db.GetBrowserInstance("default")
+	if err != nil {
+		logger.Warn(ctx, "Failed to load default instance from DB: %v", err)
+		// 如果数据库中没有，创建一个最小化的实例对象
+		defaultInstance = &models.BrowserInstance{
+			ID:   "default",
+			Name: "默认浏览器",
+		}
+	}
+
+	// 创建运行时信息
+	runtime := &BrowserInstanceRuntime{
+		instance:  defaultInstance,
+		browser:   browser,
+		startTime: time.Now(),
+	}
+
+	m.instances["default"] = runtime
+	m.currentInstanceID = "default"
+
+	// 更新实例状态为运行中
+	defaultInstance.IsActive = true
+	defaultInstance.UpdatedAt = time.Now()
+	if err := m.db.SaveBrowserInstance(defaultInstance); err != nil {
+		logger.Warn(ctx, "Failed to update default instance status: %v", err)
+	} else {
+		logger.Info(ctx, "✓ Default instance registered in instance tracker")
+	}
 
 	logger.Info(ctx, "Browser started successfully")
 	return nil

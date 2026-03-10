@@ -43,6 +43,7 @@ type BrowserConfig struct {
 	BinPath     string `json:"bin_path" toml:"bin_path"`
 	UserDataDir string `json:"user_data_dir" toml:"user_data_dir"`
 	ControlURL  string `json:"control_url,omitempty" toml:"control_url,omitempty"` // 远程 Chrome DevTools URL，例如：ws://192.168.1.100:9222 或 http://192.168.1.100:9222
+	AutoStart   bool   `json:"auto_start" toml:"auto_start"`                     // 启动时自动启动浏览器
 }
 
 func Load(path string) (*Config, error) {

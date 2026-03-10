@@ -227,6 +227,56 @@ func main() {
 		log.Printf("📝 API Documentation: http://%s/health", addr)
 	}
 
+	// 自动启动浏览器（如果配置了 auto_start）
+	if cfg.Browser != nil && cfg.Browser.AutoStart {
+		go func() {
+			// 等待服务器完全启动
+			time.Sleep(2 * time.Second)
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer cancel()
+
+			// 如果已经在运行，先尝试关闭
+			if browserManager.IsRunning() {
+				log.Println("Browser is already running, stopping before restart...")
+				if err := browserManager.Stop(); err != nil {
+					log.Printf("Warning: Failed to stop browser: %v", err)
+				} else {
+					log.Println("✓ Browser stopped successfully")
+					// 等待进程完全退出
+					time.Sleep(2 * time.Second)
+				}
+			}
+
+			log.Println("Auto-starting browser...")
+
+			// 尝试启动，如果失败则重试一次
+			err := browserManager.Start(ctx)
+			if err != nil {
+				log.Printf("Warning: Failed to auto-start browser (attempt 1): %v", err)
+
+				// 如果有用户数据目录，强制清理锁文件后重试
+				if cfg.Browser.UserDataDir != "" {
+					log.Println("Cleaning up lock files and retrying...")
+					time.Sleep(1 * time.Second)
+
+					// 再次尝试启动
+					ctx2, cancel2 := context.WithTimeout(context.Background(), 30*time.Second)
+					defer cancel2()
+					if err2 := browserManager.Start(ctx2); err2 != nil {
+						log.Printf("Warning: Failed to auto-start browser (attempt 2): %v", err2)
+						log.Println("💡 Tip: You can start the browser manually from the web UI")
+					} else {
+						log.Println("✓ Browser started successfully on retry")
+					}
+				} else {
+					log.Println("💡 Tip: You can start the browser manually from the web UI")
+				}
+			} else {
+				log.Println("✓ Browser started successfully")
+			}
+		}()
+	}
+
 	if err := router.Run(addr); err != nil {
 		log.Fatalf("Failed to start server: %v", err)
 	}
