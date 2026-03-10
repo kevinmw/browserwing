@@ -1072,6 +1072,14 @@ func (p *Player) PlayScript(ctx context.Context, page *rod.Page, script *models.
 				variables[action.VariableName] = fmt.Sprintf("%v", p.extractedData[action.VariableName])
 				logger.Info(ctx, "Updated variable from extracted data: %s = %s", action.VariableName, variables[action.VariableName])
 			}
+
+			// 执行成功后，确保 AI 控制指示器存在（页面跳转后重新注入）
+			// 使用 goroutine 异步执行，避免阻塞主流程
+			go func() {
+				// 等待一小段时间让页面完成可能的跳转
+				time.Sleep(500 * time.Millisecond)
+				p.ensureAIControlIndicator(ctx, page)
+			}()
 		}
 	}
 
