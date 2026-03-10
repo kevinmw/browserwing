@@ -20,7 +20,7 @@ type ScriptAction struct {
 	// =========================
 	// 原有字段（保持不变）
 	// =========================
-	Type      string            `json:"type"`      // click, input, select, navigate, wait, sleep, extract_text, extract_attribute, extract_html, execute_js, upload_file, scroll, keyboard, open_tab, switch_tab, switch_active_tab, ai_control
+	Type      string            `json:"type"`      // click, input, select, navigate, wait, sleep, extract_text, extract_attribute, extract_html, execute_js, upload_file, scroll, keyboard, open_tab, switch_tab, switch_active_tab, ai_control, call_llm
 	Timestamp int64             `json:"timestamp"` // 时间戳（毫秒）
 	Selector  string            `json:"selector"`  // CSS选择器
 	XPath     string            `json:"xpath"`     // XPath选择器（更可靠）
@@ -69,6 +69,13 @@ type ScriptAction struct {
 	AIControlPrompt      string `json:"ai_control_prompt,omitempty"`       // AI控制的提示词
 	AIControlXPath       string `json:"ai_control_xpath,omitempty"`        // 可选的元素XPath（用于提示词上下文）
 	AIControlLLMConfigID string `json:"ai_control_llm_config_id,omitempty"` // AI控制使用的LLM配置ID（为空则使用默认）
+
+	// LLM调用相关字段（用于 call_llm 类型）
+	LLMPrompt      string `json:"llm_prompt,omitempty"`       // LLM提示词
+	LLMConfigID    string `json:"llm_config_id,omitempty"`    // LLM配置ID（为空则使用默认）
+	LLMSystemPrompt string `json:"llm_system_prompt,omitempty"` // LLM系统提示词（可选）
+	LLMMaxTokens   int    `json:"llm_max_tokens,omitempty"`   // 最大token数（可选）
+	LLMTemperature  float64 `json:"llm_temperature,omitempty"` // 温度参数（可选）
 
 	Condition *ActionCondition `json:"condition,omitempty"`
 

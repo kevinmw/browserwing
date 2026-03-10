@@ -21,7 +21,9 @@ import (
 
 	"github.com/browserwing/browserwing/models"
 	"github.com/browserwing/browserwing/pkg/logger"
+	"github.com/browserwing/browserwing/storage"
 	"github.com/go-rod/rod"
+	"github.com/sashabaranov/go-openai"
 	"github.com/go-rod/rod/lib/input"
 	"github.com/go-rod/rod/lib/proto"
 )
@@ -57,6 +59,7 @@ type Player struct {
 	currentStepIndex  int                             // 当前执行到的步骤索引
 	agentManager      AgentManagerInterface           // Agent 管理器（用于 AI 控制功能）
 	browserManager    BrowserManagerInterface         // Browser 管理器（用于同步活跃页面）
+	db                *storage.BoltDB                 // 数据库（用于访问 LLM 配置）
 }
 
 // highlightElement 高亮显示元素
@@ -493,7 +496,7 @@ type elementContext struct {
 }
 
 // NewPlayer 创建回放器
-func NewPlayer(currentLang string) *Player {
+func NewPlayer(currentLang string, db *storage.BoltDB) *Player {
 	return &Player{
 		extractedData:   make(map[string]interface{}),
 		successCount:    0,
@@ -502,6 +505,7 @@ func NewPlayer(currentLang string) *Player {
 		tabCounter:      0,
 		downloadedFiles: make([]string, 0),
 		currentLang:     currentLang,
+		db:              db,
 	}
 }
 
@@ -1371,6 +1375,8 @@ func (p *Player) executeAction(ctx context.Context, page *rod.Page, action model
 		return p.executeCaptureXHR(ctx, activePage, action)
 	case "ai_control":
 		return p.executeAIControl(ctx, activePage, action)
+	case "call_llm":
+		return p.executeLLMCall(ctx, activePage, action)
 	default:
 		logger.Warn(ctx, "Unknown action type: %s", action.Type)
 		return nil
@@ -3732,4 +3738,188 @@ func (p *Player) executeAIControl(ctx context.Context, page *rod.Page, action mo
 		logger.Error(ctx, "❌ AI control cancelled: %v", aiCtx.Err())
 		return fmt.Errorf("AI control cancelled: %w", aiCtx.Err())
 	}
+}
+
+// executeLLMCall 执行 LLM 调用动作
+// 直接调用 LLM 生成文本内容，并保存到变量中（不涉及浏览器操作）
+func (p *Player) executeLLMCall(ctx context.Context, page *rod.Page, action models.ScriptAction) error {
+	if p.db == nil {
+		return fmt.Errorf("database is not available")
+	}
+
+	prompt := action.LLMPrompt
+	if prompt == "" {
+		return fmt.Errorf("LLM prompt is required")
+	}
+
+	logger.Info(ctx, "[executeLLMCall] Executing LLM call with prompt length: %d", len(prompt))
+
+	// 获取 LLM 配置
+	var llmConfig *models.LLMConfigModel
+	var err error
+
+	llmConfigID := action.LLMConfigID
+	if llmConfigID != "" {
+		llmConfig, err = p.db.GetLLMConfig(llmConfigID)
+		if err != nil {
+			return fmt.Errorf("failed to get LLM config %s: %w", llmConfigID, err)
+		}
+		logger.Info(ctx, "[executeLLMCall] Using specified LLM config: %s", llmConfig.Name)
+	} else {
+		// 获取默认配置
+		configs, err := p.db.ListLLMConfigs()
+		if err != nil {
+			return fmt.Errorf("failed to list LLM configs: %w", err)
+		}
+
+		// 找到默认配置
+		for _, cfg := range configs {
+			if cfg.IsDefault && cfg.IsActive {
+				llmConfig = cfg
+				break
+			}
+		}
+
+		// 如果没有默认配置，使用第一个激活的配置
+		if llmConfig == nil {
+			for _, cfg := range configs {
+				if cfg.IsActive {
+					llmConfig = cfg
+					break
+				}
+			}
+		}
+
+		if llmConfig == nil {
+			return fmt.Errorf("no active LLM config found")
+		}
+		logger.Info(ctx, "[executeLLMCall] Using default LLM config: %s", llmConfig.Name)
+	}
+
+	// 创建 OpenAI 兼容的 LLM 客户端（与 AI Control 使用相同的方式）
+	logger.Info(ctx, "[executeLLMCall] Creating LLM client for provider: %s", llmConfig.Provider)
+
+	// 获取 BaseURL
+	baseURL := p.getLLMBaseURL(llmConfig.Provider, llmConfig.BaseURL)
+
+	config := openai.DefaultConfig(llmConfig.APIKey)
+	if baseURL != "" {
+		config.BaseURL = baseURL
+	}
+	client := openai.NewClientWithConfig(config)
+
+	// 构建消息列表
+	messages := []openai.ChatCompletionMessage{
+		{
+			Role:    openai.ChatMessageRoleUser,
+			Content: prompt,
+		},
+	}
+
+	// 如果有系统提示词，添加到前面
+	if action.LLMSystemPrompt != "" {
+		messages = append([]openai.ChatCompletionMessage{
+			{
+				Role:    openai.ChatMessageRoleSystem,
+				Content: action.LLMSystemPrompt,
+			},
+		}, messages...)
+		logger.Info(ctx, "[executeLLMCall] Using custom system prompt")
+	}
+
+	// 调用 LLM
+	logger.Info(ctx, "[executeLLMCall] Calling LLM API...")
+	startTime := time.Now()
+
+	// 设置参数
+	maxTokens := 2000
+	if action.LLMMaxTokens > 0 {
+		maxTokens = action.LLMMaxTokens
+	}
+
+	temperature := float32(0.7)
+	if action.LLMTemperature > 0 {
+		temperature = float32(action.LLMTemperature)
+	}
+
+	resp, err := client.CreateChatCompletion(ctx, openai.ChatCompletionRequest{
+		Model:       llmConfig.Model,
+		Messages:    messages,
+		MaxTokens:   maxTokens,
+		Temperature: temperature,
+	})
+	if err != nil {
+		return fmt.Errorf("LLM call failed: %w", err)
+	}
+
+	if len(resp.Choices) == 0 {
+		return fmt.Errorf("LLM did not return any results")
+	}
+
+	content := resp.Choices[0].Message.Content
+
+	duration := time.Since(startTime)
+	logger.Info(ctx, "[executeLLMCall] ✓ LLM call completed in %dms, response length: %d", duration.Milliseconds(), len(content))
+
+	// 保存到变量
+	variableName := action.VariableName
+	if variableName == "" {
+		variableName = "llm_result"
+	}
+
+	p.extractedData[variableName] = content
+
+	logger.Info(ctx, "[executeLLMCall] ✓ Saved LLM response to variable: %s", variableName)
+
+	return nil
+}
+
+// getLLMBaseURL 获取各提供商的默认 BaseURL（与 AI Control 使用相同的逻辑）
+func (p *Player) getLLMBaseURL(provider, customBaseURL string) string {
+	// 如果用户自定义了 BaseURL，优先使用
+	if customBaseURL != "" {
+		return customBaseURL
+	}
+
+	// 各提供商的默认 API 端点
+	baseURLMap := map[string]string{
+		// 国际模型
+		"openai":     "https://api.openai.com/v1",
+		"gemini":     "https://generativelanguage.googleapis.com/v1beta/openai",
+		"mistral":    "https://api.mistral.ai/v1",
+		"deepseek":   "https://api.deepseek.com",
+		"groq":       "https://api.groq.com/openai/v1",
+		"cohere":     "https://api.cohere.ai/v1",
+		"xai":        "https://api.x.ai/v1",
+		"together":   "https://api.together.xyz/v1",
+		"novita":     "https://api.novita.ai/v3/openai",
+		"openrouter": "https://openrouter.ai/api/v1",
+
+		// 国内模型
+		"qwen":        "https://dashscope.aliyuncs.com/compatible-mode/v1",
+		"siliconflow": "https://api.siliconflow.cn/v1",
+		"doubao":      "https://ark.cn-beijing.volces.com/api/v3",
+		"ernie":       "https://aip.baidubce.com/rpc/2.0/ai_custom/v1/wenxinworkshop",
+		"spark":       "https://spark-api-open.xf-yun.com/v1",
+		"chatglm":     "https://open.bigmodel.cn/api/paas/v4",
+		"360":         "https://api.360.cn/v1",
+		"hunyuan":     "https://hunyuan.tencentcloudapi.com",
+		"moonshot":    "https://api.moonshot.cn/v1",
+		"baichuan":    "https://api.baichuan-ai.com/v1",
+		"minimax":     "https://api.minimax.chat/v1",
+		"yi":          "https://api.lingyiwanwu.com/v1",
+		"stepfun":     "https://api.stepfun.com/v1",
+		"coze":        "https://api.coze.cn/open_api/v2",
+
+		// 本地模型
+		"ollama": "http://localhost:11434/v1",
+	}
+
+	provider = strings.ToLower(provider)
+	if url, ok := baseURLMap[provider]; ok {
+		return url
+	}
+
+	// 未知提供商，返回空字符串
+	return ""
 }

@@ -1217,7 +1217,7 @@ func (m *Manager) PlayScript(ctx context.Context, script *models.Script, instanc
 	if currentLang == "" {
 		currentLang = "zh-CN" // 默认简体中文
 	}
-	player := NewPlayer(currentLang)
+	player := NewPlayer(currentLang, m.db)
 	player.agentManager = m.agentManager // 设置 Agent 管理器用于 AI 控制功能
 	player.browserManager = m            // 设置 Browser 管理器用于同步活跃页面
 
