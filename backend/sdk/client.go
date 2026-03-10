@@ -145,15 +145,25 @@ func New(cfg *Config) (*Client, error) {
 // initLogger 初始化日志
 func (c *Client) initLogger() error {
 	logConfig := &logger.LoggerConfig{
-		Level: "info",
-		File:  "stdout",
+		Level:      "info",
+		BaseDir:    "./log",
+		EnableFile: true,
+		MaxSize:    100,
+		MaxBackups: 30,
+		MaxAge:     30,
+		Compress:   true,
 	}
 
 	if c.config.LogLevel != "" {
 		logConfig.Level = c.config.LogLevel
 	}
-	if c.config.LogOutput != "" {
+	if c.config.LogOutput != "" && c.config.LogOutput != "stdout" {
+		// 如果指定了文件输出，使用单文件兼容模式
 		logConfig.File = c.config.LogOutput
+		logConfig.BaseDir = ""
+	} else if c.config.LogOutput == "stdout" {
+		// 禁用文件输出，只输出到控制台
+		logConfig.EnableFile = false
 	}
 
 	logger.InitLogger(logConfig)
