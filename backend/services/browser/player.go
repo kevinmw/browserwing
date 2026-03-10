@@ -3,6 +3,7 @@ package browser
 import (
 	"context"
 	_ "embed"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"image"
@@ -2148,6 +2149,86 @@ func (p *Player) executeJS(ctx context.Context, page *rod.Page, action models.Sc
 		varName = fmt.Sprintf("js_result_%d", len(p.extractedData))
 	}
 	p.extractedData[varName] = result.Value
+
+	// 检查返回值是否包含 base64 图片数据
+	// result.Value 是 gson.JSON 类型，使用 String() 方法获取字符串
+	resultStr := result.Value.String()
+
+	if strings.Contains(resultStr, "data:image/png;base64,") || strings.Contains(resultStr, "data:image/jpeg;base64,") {
+		logger.Info(ctx, "Detected base64 image data in result, attempting to save...")
+
+		// 尝试解析 JSON 并提取 base64 字段
+		var base64Data string
+		format := "png"
+
+		// 首先尝试解析为 JSON 对象
+		var jsonData map[string]interface{}
+		if err := json.Unmarshal([]byte(resultStr), &jsonData); err == nil {
+			// 解析成功，尝试提取 base64 字段
+			if base64, ok := jsonData["base64"].(string); ok {
+				resultStr = base64
+			}
+		}
+
+		// 提取 base64 数据
+		if strings.HasPrefix(resultStr, "data:image/") {
+			// 完整的 data URL
+			parts := strings.SplitN(resultStr, ",", 2)
+			if len(parts) == 2 {
+				base64Data = parts[1]
+				// 从 data URL 中提取格式
+				if strings.Contains(parts[0], "jpeg") {
+					format = "jpeg"
+				} else if strings.Contains(parts[0], "jpg") {
+					format = "jpeg"
+				}
+			}
+		}
+
+		if base64Data != "" {
+			// 解码 base64
+			data, err := base64.StdEncoding.DecodeString(base64Data)
+			if err != nil {
+				logger.Warn(ctx, "Failed to decode base64: %v", err)
+			} else {
+				// 创建 screenshots 目录
+				screenshotsDir := "screenshots"
+				if err := os.MkdirAll(screenshotsDir, 0755); err != nil {
+					logger.Warn(ctx, "Failed to create screenshots directory: %v", err)
+				} else {
+					// 生成文件名
+					timestamp := time.Now().Format("20060102_150405")
+					extension := format
+					filename := fmt.Sprintf("screenshot_%s.%s", timestamp, extension)
+					filepath := filepath.Join(screenshotsDir, filename)
+
+					// 保存文件
+					if err := os.WriteFile(filepath, data, 0644); err != nil {
+						logger.Warn(ctx, "Failed to save screenshot: %v", err)
+					} else {
+						logger.Info(ctx, "✓ Screenshot saved from base64: %s", filepath)
+
+						// 修改提取的数据，将 base64 替换为文件路径
+						// 解析原始 JSON，替换 base64 字段
+						var originalData map[string]interface{}
+						if err := json.Unmarshal([]byte(result.Value.String()), &originalData); err == nil {
+							// 替换 base64 为文件路径
+							originalData["base64"] = filepath
+							originalData["saved"] = true
+							originalData["file_size"] = len(data)
+							// 重新序列化并存储
+							modifiedJSON, _ := json.Marshal(originalData)
+							p.extractedData[varName] = string(modifiedJSON)
+							logger.Info(ctx, "✓ Replaced base64 with file path in result: %s", varName)
+						}
+
+						// 将文件路径也存入单独的字段
+						p.extractedData[varName+"_path"] = filepath
+					}
+				}
+			}
+		}
+	}
 
 	logger.Info(ctx, "✓ JavaScript execution successful: %s", varName)
 	return nil

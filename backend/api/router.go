@@ -284,6 +284,7 @@ func SetupRouter(handler *Handler, agentHandler interface{}, frontendFS fs.FS, e
 
 			// 高级功能
 			executorAPI.POST("/screenshot", handler.ExecutorScreenshot) // 截图
+			executorAPI.POST("/save-screenshot", handler.ExecutorSaveScreenshot) // 从base64保存截图
 			executorAPI.POST("/evaluate", handler.ExecutorEvaluate)     // 执行 JavaScript
 			executorAPI.POST("/batch", handler.ExecutorBatch)           // 批量执行操作
 

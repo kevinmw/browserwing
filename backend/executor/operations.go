@@ -2492,3 +2492,8 @@ func (e *Executor) saveScreenshot(ctx context.Context, data []byte, format strin
 	logger.Info(ctx, "Screenshot saved to: %s", filepath)
 	return filepath, nil
 }
+
+// SaveScreenshot 导出版本的保存截图方法（供外部调用）
+func (e *Executor) SaveScreenshot(ctx context.Context, data []byte, format string) (string, error) {
+	return e.saveScreenshot(ctx, data, format)
+}

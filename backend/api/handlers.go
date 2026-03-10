@@ -2,9 +2,12 @@ package api
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -4559,6 +4562,68 @@ func (h *Handler) ExecutorScreenshot(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, result)
+}
+
+// ExecutorSaveScreenshot 从 base64 保存截图
+func (h *Handler) ExecutorSaveScreenshot(c *gin.Context) {
+	var req struct {
+		Base64 string `json:"base64" binding:"required"`
+		Format string `json:"format"` // png, jpeg (默认 png)
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "error.invalidRequest", "detail": err.Error()})
+		return
+	}
+
+	// 解码 base64
+	// 移除 data URL 前缀 (如果有)
+	base64Data := req.Base64
+	if strings.HasPrefix(base64Data, "data:image/") {
+		parts := strings.SplitN(base64Data, ",", 2)
+		if len(parts) == 2 {
+			base64Data = parts[1]
+		}
+	}
+
+	// 解码 base64
+	data, err := io.ReadAll(base64.NewDecoder(base64.StdEncoding, strings.NewReader(base64Data)))
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error":  "error.base64DecodeFailed",
+			"detail": err.Error(),
+		})
+		return
+	}
+
+	// 确定格式
+	format := req.Format
+	if format == "" {
+		format = "png"
+	}
+
+	// 调用 executor 的 saveScreenshot 方法
+	executor := h.executor.WithContext(c.Request.Context())
+	path, err := executor.SaveScreenshot(c.Request.Context(), data, format)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error":  "error.saveScreenshotFailed",
+			"detail": err.Error(),
+		})
+		return
+	}
+
+	// 获取绝对路径
+	absPath, _ := filepath.Abs(path)
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"path":    path,
+		"absPath": absPath,
+		"format":  format,
+		"size":    len(data),
+		"message": "Screenshot saved successfully",
+	})
 }
 
 // ExecutorEvaluate 执行 JavaScript
