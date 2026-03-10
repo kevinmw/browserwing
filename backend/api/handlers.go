@@ -644,7 +644,7 @@ func (h *Handler) UpdateScript(c *gin.Context) {
 		MCPCommandName        *string                `json:"mcp_command_name"`
 		MCPCommandDescription *string                `json:"mcp_command_description"`
 		MCPInputSchema        map[string]interface{} `json:"mcp_input_schema"`
-		Variables             map[string]string      `json:"variables"`
+		Variables             *map[string]string     `json:"variables"` // 改为指针类型，区分未提供和清空
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -669,8 +669,15 @@ func (h *Handler) UpdateScript(c *gin.Context) {
 			script.Duration = req.Actions[len(req.Actions)-1].Timestamp - req.Actions[0].Timestamp
 		}
 	}
+	// Variables: 使用指针类型区分"未提供(nil)"和"清空(空map或null)"
 	if req.Variables != nil {
-		script.Variables = req.Variables
+		if *req.Variables == nil {
+			// 明确设置为 nil（清空）
+			script.Variables = nil
+		} else {
+			// 设置为新值
+			script.Variables = *req.Variables
+		}
 	}
 	if req.Tags != nil {
 		script.Tags = req.Tags

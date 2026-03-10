@@ -1126,9 +1126,12 @@ export default function ScriptManager() {
               actions: script.actions,
             }
 
-            // 如果导入数据包含变量，则更新变量
+            // Variables: 使用 null 来清空字段（解决覆盖时不删除旧字段的问题）
             if (script.variables !== undefined) {
               updateData.variables = script.variables
+            } else {
+              // 导入数据中没有 variables 字段，明确发送 null 来清空数据库中的旧值
+              updateData.variables = null
             }
 
             // 如果导入数据包含MCP信息，则更新MCP信息
