@@ -83,7 +83,11 @@ func SetupRouter(handler *Handler, agentHandler interface{}, frontendFS fs.FS, e
 			browserAPI.POST("/record/stop", handler.StopRecording)
 			browserAPI.GET("/record/status", handler.GetRecordingStatus)
 			browserAPI.POST("/record/clear-state", handler.ClearInPageRecordingState)
-			
+
+			// 文件操作
+			browserAPI.POST("/download-images", handler.DownloadImages)
+			browserAPI.POST("/save-markdown", handler.SaveMarkdown)
+
 			// 浏览器实例管理
 			browserAPI.POST("/instances", handler.CreateBrowserInstance)
 			browserAPI.GET("/instances", handler.ListBrowserInstances)
