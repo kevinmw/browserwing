@@ -1985,10 +1985,19 @@ func (m *Manager) startInstanceInternal(ctx context.Context, instanceID string) 
 		logger.Info(ctx, "Starting local browser instance...")
 
 		// 创建启动器
-		headless := false
+		// headless 优先级：实例配置 > 默认配置 > 兜底值
+		var headless bool
 		if instance.Headless != nil {
+			// 使用实例配置
 			headless = *instance.Headless
+		} else if m.defaultBrowserConfig.Headless != nil {
+			// 使用默认配置（包含智能环境检测）
+			headless = *m.defaultBrowserConfig.Headless
+		} else {
+			// 兜底值
+			headless = false
 		}
+		logger.Info(ctx, "Headless mode for instance %s: %v", instanceID, headless)
 
 		l := launcher.New().
 			Headless(headless).
