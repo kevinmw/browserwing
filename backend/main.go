@@ -377,6 +377,16 @@ func openBrowser(url string) {
 
 // initDefaultBrowserInstance 初始化默认浏览器实例
 func initDefaultBrowserInstance(db *storage.BoltDB, cfg *config.Config) error {
+	// 检查是否启用双实例模式
+	dualInstanceMode := cfg.Browser != nil && cfg.Browser.DualInstanceMode
+	if dualInstanceMode {
+		return initDualBrowserInstances(db, cfg)
+	}
+	return initSingleBrowserInstance(db, cfg)
+}
+
+// initSingleBrowserInstance 初始化单个默认浏览器实例
+func initSingleBrowserInstance(db *storage.BoltDB, cfg *config.Config) error {
 	// 检查是否已存在默认实例
 	defaultInstance, err := db.GetDefaultBrowserInstance()
 	if err == nil && defaultInstance != nil {
@@ -516,6 +526,123 @@ func initDefaultBrowserInstance(db *storage.BoltDB, cfg *config.Config) error {
 
 	log.Printf("Created default browser instance: %s (BinPath: %s, UserDataDir: %s)",
 		instance.Name, instance.BinPath, instance.UserDataDir)
+	return nil
+}
+
+// initDualBrowserInstances 初始化双实例模式（dev + prod）
+func initDualBrowserInstances(db *storage.BoltDB, cfg *config.Config) error {
+	log.Println("Dual instance mode enabled: Creating dev and prod browser instances")
+
+	// 查找 Chrome 路径
+	var binPath string
+	var baseUserDataDir string
+
+	// 获取默认浏览器路径
+	commonPaths := []string{
+		"/usr/bin/google-chrome",
+		"/usr/bin/chromium-browser",
+		"/usr/bin/chromium",
+		"/usr/bin/google-chrome-stable",
+		"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+		"C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
+		"C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe",
+	}
+
+	for _, path := range commonPaths {
+		if _, err := os.Stat(path); err == nil {
+			binPath = path
+			log.Printf("Found browser at: %s", binPath)
+			break
+		}
+	}
+
+	// 如果配置中有指定路径，优先使用配置的路径
+	if cfg.Browser != nil && cfg.Browser.BinPath != "" {
+		binPath = cfg.Browser.BinPath
+		log.Printf("Using browser path from config: %s", binPath)
+	}
+
+	// 设置用户数据目录
+	homeDir, _ := os.UserHomeDir()
+	if homeDir != "" {
+		baseUserDataDir = filepath.Join(homeDir, ".browserwing")
+	}
+
+	// 检查是否已存在实例
+	instances, err := db.ListBrowserInstances()
+	if err == nil {
+		for _, inst := range instances {
+			if inst.ID == "dev" || inst.ID == "prod" {
+				log.Printf("Instance %s already exists (ID: %s), skipping creation", inst.Name, inst.ID)
+				return nil
+			}
+		}
+	}
+
+	useStealth := true
+
+	// 创建 dev 实例（有头模式，用于测试）
+	devHeadless := false
+	devInstance := &models.BrowserInstance{
+		ID:          "dev",
+		Name:        "开发浏览器",
+		Description: "有头模式，用于脚本测试和调试",
+		Type:        "local",
+		BinPath:     binPath,
+		UserDataDir: filepath.Join(baseUserDataDir, "dev-profile"),
+		UserAgent:   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36",
+		UseStealth:  &useStealth,
+		Headless:    &devHeadless,
+		LaunchArgs: []string{
+			"disable-blink-features=AutomationControlled",
+			"excludeSwitches=enable-automation",
+			"no-first-run",
+			"no-default-browser-check",
+			"window-size=1920,1080",
+			"start-maximized",
+		},
+		IsDefault: false,
+		IsActive:  false,
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+	}
+
+	if err := db.SaveBrowserInstance(devInstance); err != nil {
+		return fmt.Errorf("failed to save dev browser instance: %w", err)
+	}
+	log.Printf("Created dev browser instance: %s (headless=false)", devInstance.Name)
+
+	// 创建 prod 实例（无头模式，用于生产）
+	prodHeadless := true
+	prodInstance := &models.BrowserInstance{
+		ID:          "prod",
+		Name:        "生产浏览器",
+		Description: "无头模式，用于生产环境脚本执行",
+		Type:        "local",
+		BinPath:     binPath,
+		UserDataDir: filepath.Join(baseUserDataDir, "prod-profile"),
+		UserAgent:   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36",
+		UseStealth:  &useStealth,
+		Headless:    &prodHeadless,
+		LaunchArgs: []string{
+			"disable-blink-features=AutomationControlled",
+			"excludeSwitches=enable-automation",
+			"no-first-run",
+			"no-default-browser-check",
+			"window-size=1920,1080",
+		},
+		IsDefault: false,
+		IsActive:  false,
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+	}
+
+	if err := db.SaveBrowserInstance(prodInstance); err != nil {
+		return fmt.Errorf("failed to save prod browser instance: %w", err)
+	}
+	log.Printf("Created prod browser instance: %s (headless=true)", prodInstance.Name)
+
+	log.Println("✓ Dual instance mode initialized: dev (headless=false) + prod (headless=true)")
 	return nil
 }
 

@@ -17,26 +17,37 @@ model = "gpt-3.5-turbo"
 
 # 浏览器配置
 [browser]
-headless = false  # 是否无头模式运行
+headless = false  # 是否无头模式运行（单实例模式下使用）
 bin_path = ""  # 浏览器可执行文件路径，留空使用系统默认
 auto_start = false  # 启动时自动启动浏览器
 
+# 双实例模式：启用后将自动创建两个浏览器实例
+# - dev 实例：有头模式，用于脚本测试和调试
+# - prod 实例：无头模式，用于生产环境脚本执行
+#
+# 使用方式：
+# 1. 启用双实例模式：dual_instance_mode = true
+# 2. 脚本执行时通过 instance_id 参数选择实例：
+#    - instance_id="dev" → 使用有头实例（测试）
+#    - instance_id="prod" → 使用无头实例（生产）
+dual_instance_mode = false
+
 # 远程 Chrome 调试 URL（可选）
 # 如果配置了此项，将连接到远程 Chrome 而不是启动本地浏览器
-# 
+#
 # 使用场景：
 #   1. 连接到远程服务器上的 Chrome（例如 Docker 容器中的 Chrome）
 #   2. 连接到已经运行的 Chrome 实例
 #   3. 多个服务共享同一个 Chrome 实例
-# 
+#
 # 远程启动 Chrome 命令示例：
 #   google-chrome --remote-debugging-port=9222 --no-first-run
-# 
+#
 # URL 格式示例：
 #   - WebSocket: "ws://192.168.1.100:9222"
 #   - HTTP:      "http://192.168.1.100:9222"
 #   - 本地:      "http://localhost:9222"
-# 
+#
 # ⚠️ 注意：如果设置了 control_url，bin_path 和 user_data_dir 将被忽略
 control_url = ""
 

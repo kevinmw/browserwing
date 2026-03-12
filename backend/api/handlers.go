@@ -134,6 +134,7 @@ func (h *Handler) OpenBrowserPage(c *gin.Context) {
 		URL        string `json:"url" binding:"required"`
 		Language   string `json:"language"`    // 前端当前语言
 		InstanceID string `json:"instance_id"` // 指定实例ID，空字符串表示使用当前实例
+		Mode       string `json:"mode"`        // 运行模式：dev（有头测试）或 prod（无头生产）
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -141,12 +142,27 @@ func (h *Handler) OpenBrowserPage(c *gin.Context) {
 		return
 	}
 
-	if !h.browserManager.IsRunning() {
+	// 将 mode 映射到 instanceID
+	instanceID := req.InstanceID
+	if req.Mode != "" {
+		switch req.Mode {
+		case "dev", "test":
+			instanceID = "dev"
+		case "prod", "production":
+			instanceID = "prod"
+		default:
+			// 如果是其他值，当作 instanceID 处理
+			instanceID = req.Mode
+		}
+		logger.Info(c.Request.Context(), "OpenPage mode: %s → using instance: %s", req.Mode, instanceID)
+	}
+
+	if !h.browserManager.IsInstanceRunning(instanceID) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "error.browserNotRunning"})
 		return
 	}
 
-	if err := h.browserManager.OpenPage(req.URL, req.Language, req.InstanceID); err != nil {
+	if err := h.browserManager.OpenPage(req.URL, req.Language, instanceID); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "error.openPageFailed"})
 		return
 	}
@@ -743,10 +759,28 @@ func (h *Handler) PlayScript(c *gin.Context) {
 	var req struct {
 		Params     map[string]string `json:"params"`
 		InstanceID string            `json:"instance_id"` // 指定实例ID，空字符串表示使用当前实例
+		Mode       string            `json:"mode"`        // 运行模式：dev（有头测试）或 prod（无头生产）
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		// 如果没有请求体或解析失败,使用空参数
 		req.Params = make(map[string]string)
+	}
+
+	// 优先级：请求体 mode > 请求体 instance_id > Query instance_id > Header X-Instance-ID
+	if req.Mode != "" {
+		// 将 mode 映射到 instanceID
+		// dev/test → 有头实例，用于测试
+		// prod/production → 无头实例，用于生产
+		switch req.Mode {
+		case "dev", "test":
+			instanceID = "dev"
+		case "prod", "production":
+			instanceID = "prod"
+		default:
+			// 如果是其他值，当作 instanceID 处理
+			instanceID = req.Mode
+		}
+		logger.Info(c.Request.Context(), "Mode parameter: %s → using instance: %s", req.Mode, instanceID)
 	}
 	if req.InstanceID != "" {
 		instanceID = req.InstanceID
