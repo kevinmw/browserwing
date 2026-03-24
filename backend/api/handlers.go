@@ -49,6 +49,13 @@ type Handler struct {
 	agentManager   interface{}    // Agent 管理器（用于 LLM 配置更新后的热加载）
 	scheduler      interface{}    // 定时任务调度器
 	explorer       *browser.Explorer  // AI 探索器
+	versionInfo    VersionInfo
+}
+
+type VersionInfo struct {
+	Version   string `json:"version"`
+	BuildTime string `json:"build_time"`
+	GoVersion string `json:"go_version"`
 }
 
 func NewHandler(
@@ -65,6 +72,18 @@ func NewHandler(
 		llmManager:     llmMgr,
 		mcpServer:      nil, // 将在主程序中设置
 	}
+}
+
+func (h *Handler) SetVersionInfo(version, buildTime, goVersion string) {
+	h.versionInfo = VersionInfo{
+		Version:   version,
+		BuildTime: buildTime,
+		GoVersion: goVersion,
+	}
+}
+
+func (h *Handler) GetVersionInfo(c *gin.Context) {
+	c.JSON(http.StatusOK, h.versionInfo)
 }
 
 // ============= 浏览器控制相关 API =============
@@ -6043,6 +6062,45 @@ func (h *Handler) ToggleScheduledTask(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"message": "success.taskToggled",
 		"task":    task,
+	})
+}
+
+// RunScheduledTaskNow 立即执行定时任务
+func (h *Handler) RunScheduledTaskNow(c *gin.Context) {
+	id := c.Param("id")
+
+	if _, err := h.db.GetScheduledTask(id); err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "error.taskNotFound"})
+		return
+	}
+
+	if h.scheduler == nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "error.schedulerNotAvailable"})
+		return
+	}
+
+	type SchedulerRunner interface {
+		RunTaskNow(string) (*models.TaskExecution, error)
+	}
+
+	scheduler, ok := h.scheduler.(SchedulerRunner)
+	if !ok {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "error.schedulerNotAvailable"})
+		return
+	}
+
+	execution, runErr := scheduler.RunTaskNow(id)
+	if runErr != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error":   "error.taskRunFailed",
+			"details": runErr.Error(),
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"message":   "success.taskRunCompleted",
+		"execution": execution,
 	})
 }
 

@@ -297,6 +297,12 @@ func (m *Manager) Start(ctx context.Context) error {
 			Devtools(false).
 			Leakless(false)
 
+		// NoSandbox 配置
+		if defaultConfig.NoSandbox != nil && *defaultConfig.NoSandbox {
+			l = l.NoSandbox(true)
+			logger.Info(ctx, "NoSandbox enabled by configuration")
+		}
+
 		// 代理配置
 		if defaultConfig.Proxy != "" {
 			// 解析代理 URL，提取认证信息
@@ -739,14 +745,24 @@ func (m *Manager) Status() map[string]interface{} {
 func (m *Manager) setPageWindow(page *rod.Page) {
 	ctx := context.Background()
 
-	// 获取屏幕尺寸
+	const (
+		defaultWindowWidth   = 1400
+		defaultWindowHeight  = 900
+		defaultViewportWidth = 1280
+		defaultViewportHeight = 800
+		minScreenWidth       = 1024
+		minScreenHeight      = 768
+	)
+
+	var windowWidth, windowHeight int
+	var viewportWidth, viewportHeight int
+
 	screenInfo, err := page.Eval(`() => ({
 		width: window.screen.availWidth,
 		height: window.screen.availHeight
 	})`)
 
-	var windowWidth, windowHeight int
-	var viewportWidth, viewportHeight int
+	useDefault := true
 
 	if err == nil && screenInfo != nil {
 		if info, ok := screenInfo.Value.Val().(map[string]interface{}); ok {
@@ -755,40 +771,37 @@ func (m *Manager) setPageWindow(page *rod.Page) {
 
 			logger.Info(ctx, "Detected screen size: %dx%d", screenWidth, screenHeight)
 
-			// 窗口大小设置为屏幕大小的 90%
-			windowWidth = int(float64(screenWidth) * 0.9)
-			windowHeight = int(float64(screenHeight) * 0.9)
-
-			// viewport 大小为窗口大小减去浏览器边框和工具栏 (约 120 像素宽度, 100 像素高度)
-			viewportWidth = windowWidth - 120
-			viewportHeight = windowHeight - 100
-
-			logger.Info(ctx, "Calculated window size: %dx%d", windowWidth, windowHeight)
-			logger.Info(ctx, "Calculated viewport size: %dx%d", viewportWidth, viewportHeight)
-		} else {
-			logger.Warn(ctx, "Failed to parse screen info, using default sizes")
-			windowWidth = 1400
-			windowHeight = 900
-			viewportWidth = 1280
-			viewportHeight = 800
+			if screenWidth >= minScreenWidth && screenHeight >= minScreenHeight {
+				windowWidth = int(float64(screenWidth) * 0.9)
+				windowHeight = int(float64(screenHeight) * 0.9)
+				viewportWidth = windowWidth - 120
+				viewportHeight = windowHeight - 100
+				useDefault = false
+			} else {
+				logger.Warn(ctx, "Screen size %dx%d is too small (likely headless/virtual), using default viewport", screenWidth, screenHeight)
+			}
 		}
 	} else {
-		logger.Warn(ctx, "Failed to get screen size: %v, using default sizes", err)
-		windowWidth = 1400
-		windowHeight = 900
-		viewportWidth = 1280
-		viewportHeight = 800
+		logger.Warn(ctx, "Failed to get screen size: %v", err)
 	}
 
-	// 设置浏览器窗口（外壳）
+	if useDefault {
+		windowWidth = defaultWindowWidth
+		windowHeight = defaultWindowHeight
+		viewportWidth = defaultViewportWidth
+		viewportHeight = defaultViewportHeight
+	}
+
+	logger.Info(ctx, "Calculated window size: %dx%d", windowWidth, windowHeight)
+	logger.Info(ctx, "Calculated viewport size: %dx%d", viewportWidth, viewportHeight)
+
 	page.MustSetWindow(0, 0, windowWidth, windowHeight)
 
-	// 设置页面 viewport（CSS 布局尺寸）
 	page.MustSetViewport(
-		viewportWidth,  // width
-		viewportHeight, // height
-		1,              // deviceScaleFactor
-		false,          // desktop
+		viewportWidth,
+		viewportHeight,
+		1,
+		false,
 	)
 }
 
@@ -1538,14 +1551,17 @@ func (m *Manager) getDefaultBrowserConfig() *models.BrowserConfig {
 	// 如果是无GUI环境（Docker、Linux服务器等），默认使用 headless 模式
 	headless := isHeadlessEnvironment()
 
+	// Linux 下默认启用 NoSandbox，避免权限问题导致启动失败
+	noSandbox := runtime.GOOS == "linux"
+
 	// 记录环境检测结果
 	osType := runtime.GOOS
 	display := os.Getenv("DISPLAY")
 	waylandDisplay := os.Getenv("WAYLAND_DISPLAY")
 
 	logger.Info(context.Background(),
-		"detected browser environment: OS=%s, DISPLAY=%s, WAYLAND_DISPLAY=%s, headless=%v",
-		osType, display, waylandDisplay, headless)
+		"detected browser environment: OS=%s, DISPLAY=%s, WAYLAND_DISPLAY=%s, headless=%v, noSandbox=%v",
+		osType, display, waylandDisplay, headless, noSandbox)
 
 	return &models.BrowserConfig{
 		ID:          "default",
@@ -1555,6 +1571,7 @@ func (m *Manager) getDefaultBrowserConfig() *models.BrowserConfig {
 		UserAgent:   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36",
 		UseStealth:  &useStealth,
 		Headless:    &headless,
+		NoSandbox:   &noSandbox,
 		LaunchArgs: []string{
 			"disable-blink-features=AutomationControlled",
 			"excludeSwitches=enable-automation",
@@ -1916,6 +1933,20 @@ func (m *Manager) StartInstance(ctx context.Context, instanceID string) error {
 
 // startInstanceInternal 内部启动函数，调用者必须已持有锁
 func (m *Manager) startInstanceInternal(ctx context.Context, instanceID string) error {
+	// 空 instanceID 回退：优先使用当前实例，否则查找默认实例
+	if instanceID == "" {
+		if m.currentInstanceID != "" {
+			instanceID = m.currentInstanceID
+		} else {
+			defaultInst, err := m.db.GetDefaultBrowserInstance()
+			if err != nil {
+				return fmt.Errorf("no instance ID specified and no default instance found: %w", err)
+			}
+			instanceID = defaultInst.ID
+			logger.Info(ctx, "No instance ID specified, using default instance: %s (%s)", defaultInst.Name, defaultInst.ID)
+		}
+	}
+
 	// 检查实例是否已启动
 	if runtime, exists := m.instances[instanceID]; exists && runtime != nil {
 		return fmt.Errorf("instance %s is already running", instanceID)
@@ -2003,6 +2034,16 @@ func (m *Manager) startInstanceInternal(ctx context.Context, instanceID string) 
 			Headless(headless).
 			Devtools(false).
 			Leakless(false)
+
+		// NoSandbox 配置：优先使用实例配置，否则回退到默认配置
+		noSandbox := instance.NoSandbox
+		if noSandbox == nil && m.defaultBrowserConfig != nil {
+			noSandbox = m.defaultBrowserConfig.NoSandbox
+		}
+		if noSandbox != nil && *noSandbox {
+			l = l.NoSandbox(true)
+			logger.Info(ctx, "NoSandbox enabled by configuration")
+		}
 
 		// 设置代理
 		if instance.Proxy != "" {
