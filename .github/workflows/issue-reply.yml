@@ -1,0 +1,82 @@
+name: Issue Auto Reply
+
+on:
+  issues:
+    types: [opened]
+
+jobs:
+  greet:
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+    steps:
+      - name: Greet new issue
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const issue = context.payload.issue;
+            const author = issue.user.login;
+            const labels = issue.labels.map(l => l.name);
+            const title = issue.title.toLowerCase();
+            const body = (issue.body || '').toLowerCase();
+
+            // 检查是否是首次提 issue
+            const { data: issues } = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              creator: author,
+              state: 'all'
+            });
+            const isFirstIssue = issues.length === 1;
+
+            // 判断 issue 类型
+            const isBug = labels.includes('bug') || title.includes('[bug]');
+            const isFeature = labels.includes('enhancement') || title.includes('[feature]');
+
+            let lines = [];
+
+            // 欢迎语
+            if (isFirstIssue) {
+              lines.push(`👋 Hi @${author}, welcome! Thanks for opening your first issue on BrowserWing!`);
+            } else {
+              lines.push(`👋 Thanks @${author} for the feedback!`);
+            }
+            lines.push('');
+
+            // 根据类型给出针对性提示
+            if (isBug) {
+              lines.push(
+                `We'll look into this as soon as we can. To help us investigate faster, please make sure you've included:`,
+                ``,
+                `- **BrowserWing version** (shown in the web UI footer, or run with \`--version\`)`,
+                `- **OS & environment** (macOS / Linux / Windows / Docker)`,
+                `- **Steps to reproduce** the issue`,
+                `- **Logs or error messages** (from the terminal where BrowserWing is running)`,
+                ``,
+                `> 💡 Some issues have already been fixed in the latest **beta** release. ` +
+                `You can try upgrading to the newest version from [Releases](https://github.com/browserwing/browserwing/releases) to see if that helps.`,
+              );
+            } else if (isFeature) {
+              lines.push(
+                `We appreciate the feature suggestion! We'll evaluate it and discuss.`,
+                ``,
+                `If you'd like to contribute this yourself, PRs are always welcome! 🙌`,
+              );
+            } else {
+              lines.push(
+                `We'll review this shortly. If this is a bug, please include your **version**, **OS**, and any **error logs** so we can help faster.`,
+                ``,
+                `> 💡 You may also want to check the latest **beta** release from [Releases](https://github.com/browserwing/browserwing/releases) — your issue may already be fixed.`,
+              );
+            }
+
+            lines.push('');
+            lines.push(`---`);
+            lines.push(`⏱ We typically respond within **1–2 business days**. Thank you for your patience!`);
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issue.number,
+              body: lines.join('\n')
+            });
