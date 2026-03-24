@@ -1054,6 +1054,15 @@ func (p *Player) PlayScript(ctx context.Context, page *rod.Page, script *models.
 		p.disableIndicatorInteraction(ctx, page)
 
 		if err := p.executeAction(ctx, page, action); err != nil {
+			// 检查是否是脚本中止错误
+			if strings.Contains(err.Error(), "script aborted by JavaScript") {
+				logger.Error(ctx, "Script execution aborted by user request, stopping immediately")
+				// 关闭当前页面
+				if err := page.Close(); err != nil {
+					logger.Warn(ctx, "Failed to close page after abort: %v", err)
+				}
+				return err
+			}
 			logger.Warn(ctx, "Action execution failed (continuing with subsequent steps): %v", err)
 			p.failCount++
 			// 恢复指示器交互
@@ -2153,6 +2162,12 @@ func (p *Player) executeJS(ctx context.Context, page *rod.Page, action models.Sc
 	// 检查返回值是否包含 base64 图片数据
 	// result.Value 是 gson.JSON 类型，使用 String() 方法获取字符串
 	resultStr := result.Value.String()
+
+	// 检查是否包含脚本中止标记（用于在JavaScript中强制停止脚本执行）
+	if strings.Contains(resultStr, "__ABORT_SCRIPT__") {
+		logger.Error(ctx, "Script abort requested via JavaScript")
+		return fmt.Errorf("script aborted by JavaScript: %s", resultStr)
+	}
 
 	if strings.Contains(resultStr, "data:image/png;base64,") || strings.Contains(resultStr, "data:image/jpeg;base64,") {
 		logger.Info(ctx, "Detected base64 image data in result, attempting to save...")
